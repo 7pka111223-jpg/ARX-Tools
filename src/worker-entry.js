@@ -1,3 +1,12 @@
+// Side-effect-only import: registers globalThis.pdfjsWorker.WorkerMessageHandler
+// so pdfjs-dist's PDFWorker#initialize() takes the in-thread "fake worker"
+// branch (LoopbackPort, no nested real Worker, no `window` reference) instead
+// of falling through to the real-Worker path that requires
+// GlobalWorkerOptions.workerSrc and references `window.location` -- neither
+// of which is available/correct inside this dedicated Worker's global scope.
+// MUST be imported before any pdfjs-dist getDocument() call, so it is placed
+// first in this file.
+import 'pdfjs-dist/legacy/build/pdf.worker.mjs';
 import nspell from 'nspell';
 import { processFile } from './processFile.js';
 

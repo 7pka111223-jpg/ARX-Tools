@@ -27,15 +27,6 @@ export async function extractPdfText(pdfBytes) {
       // exceptions -- it only silences internal console.log/console.warn
       // calls, not the error-classification logic below.
       verbosity: pdfjsLib.VerbosityLevel.ERRORS,
-      // Force synchronous in-thread parsing instead of relying on an
-      // implicit "fake worker" fallback. We are already executing inside
-      // our own dedicated Worker (created by window.__createWorker()), so
-      // pdfjs-dist does not need to spin up a nested worker of its own --
-      // and in pdfjs-dist@6.x running inside a real bundled browser Worker,
-      // the implicit fallback does not occur, causing a hard throw
-      // ("No \"GlobalWorkerOptions.workerSrc\" specified.") that only
-      // reproduces in that exact environment, not under Node.
-      disableWorker: true,
     }).promise;
 
     const pages = [];
