@@ -85,3 +85,88 @@ test('saving a rule with an invalid regex shows an alert and leaves the dropdown
   assert.equal(typeof alertMessage, 'string');
   assert.ok(alertMessage.length > 0);
 });
+
+test('importing an invalid rules file shows an alert and leaves rules/dropdown unchanged', async () => {
+  setupDom();
+  const root = document.getElementById('app');
+  const app = initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
+
+  let alertMessage = null;
+  global.alert = (msg) => {
+    alertMessage = msg;
+  };
+
+  const optionsBefore = [...root.querySelectorAll('#ruleSelect option')].map((o) => o.value);
+
+  const badRules = {
+    project: [],
+    spelling: { language: 'en', customDictionary: [], ignore: [] },
+    titleBlockRegion: { corner: 'bottom-right', widthPct: 30, heightPct: 25 },
+    rules: [
+      { id: 'badOne', category: 'formatting', label: 'Bad', message: 'msg', severity: 'critical', enabled: true },
+    ],
+  };
+  const fakeFile = { text: () => Promise.resolve(JSON.stringify(badRules)) };
+
+  const importInput = root.querySelector('#importRules');
+  Object.defineProperty(importInput, 'files', { value: [fakeFile], configurable: true });
+
+  const changeEvent = new window.Event('change');
+  importInput.dispatchEvent(changeEvent);
+
+  // The handler is async; wait for its microtasks (file.text() + import) to settle.
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(typeof alertMessage, 'string');
+  assert.ok(alertMessage.length > 0);
+
+  const optionsAfter = [...root.querySelectorAll('#ruleSelect option')].map((o) => o.value);
+  assert.deepEqual(optionsAfter, optionsBefore);
+  assert.ok(app.store.getRule('badOne') == null);
+});
+
+test('a second handleFiles call while one is in progress is ignored and does not corrupt drawingResults', async () => {
+  setupDom();
+  const root = document.getElementById('app');
+
+  // A worker whose postMessage resolves on a later microtask, leaving a real
+  // window where a concurrent handleFiles call could race in before the
+  // first call finishes its loop.
+  function createDelayedWorker() {
+    return {
+      postMessage(msg) {
+        const self = this;
+        setTimeout(() => {
+          self.onmessage({
+            data: { result: { fileName: msg.fileName, pass: true, issues: [], counts: { error: 0, warn: 0 } } },
+          });
+        }, 0);
+      },
+      terminate() {},
+    };
+  }
+
+  const app = initApp(root, { createWorker: createDelayedWorker });
+
+  let alertMessage = null;
+  global.alert = (msg) => {
+    alertMessage = msg;
+  };
+
+  const file1 = { name: 'a.pdf', arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) };
+  const file2 = { name: 'b.pdf', arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) };
+
+  const firstCall = app.handleFiles([file1]);
+  // Second call happens while the first is still mid-batch (busy === true).
+  const secondCall = app.handleFiles([file2]);
+
+  await Promise.all([firstCall, secondCall]);
+
+  // The second call should have been rejected via the busy guard, with user feedback,
+  // and should not have touched shared state.
+  assert.equal(typeof alertMessage, 'string');
+  assert.ok(alertMessage.length > 0);
+
+  const summaryRows = root.querySelectorAll('#summaryTable tbody tr');
+  assert.equal(summaryRows.length, 1);
+});

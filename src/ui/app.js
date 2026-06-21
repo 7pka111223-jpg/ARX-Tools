@@ -6,6 +6,7 @@ import { renderSummaryRow, renderRuleOption } from './render.js';
 export function initApp(root, { createWorker = () => window.__createWorker() } = {}) {
   const store = createRulesStore(DEFAULT_RULES);
   let drawingResults = [];
+  let busy = false;
 
   root.innerHTML = `
     <div id="dropZone">Drag PDF files here or <input type="file" id="fileInput" multiple accept=".pdf"></div>
@@ -55,22 +56,36 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
   }
 
   async function handleFiles(files) {
-    const pdfFiles = [...files].filter((f) => f.name.toLowerCase().endsWith('.pdf'));
-    progress.max = pdfFiles.length || 1;
-    progress.value = 0;
-    drawingResults = [];
-    const worker = createWorker();
-    for (const file of pdfFiles) {
-      const pdfBytes = new Uint8Array(await file.arrayBuffer());
-      const result = await new Promise((resolve) => {
-        worker.onmessage = (e) => resolve(e.data.result);
-        worker.postMessage({ fileName: file.name, pdfBytes, rulesConfig: store.getRules(), jobId: file.name }, [pdfBytes.buffer]);
-      });
-      drawingResults.push(result);
-      progress.value += 1;
-      refreshSummary();
+    if (busy) {
+      alert('A batch is already being processed — please wait for it to finish.');
+      return;
     }
-    worker.terminate();
+    busy = true;
+    fileInput.disabled = true;
+    try {
+      const pdfFiles = [...files].filter((f) => f.name.toLowerCase().endsWith('.pdf'));
+      progress.max = pdfFiles.length || 1;
+      progress.value = 0;
+      drawingResults = [];
+      const worker = createWorker();
+      try {
+        for (const file of pdfFiles) {
+          const pdfBytes = new Uint8Array(await file.arrayBuffer());
+          const result = await new Promise((resolve) => {
+            worker.onmessage = (e) => resolve(e.data.result);
+            worker.postMessage({ fileName: file.name, pdfBytes, rulesConfig: store.getRules(), jobId: file.name }, [pdfBytes.buffer]);
+          });
+          drawingResults.push(result);
+          progress.value += 1;
+          refreshSummary();
+        }
+      } finally {
+        worker.terminate();
+      }
+    } finally {
+      busy = false;
+      fileInput.disabled = false;
+    }
   }
 
   fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
@@ -144,7 +159,12 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
   root.querySelector('#importRules').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    store.importRules(await file.text());
+    try {
+      store.importRules(await file.text());
+    } catch (err) {
+      alert(err.message);
+      return;
+    }
     refreshRuleDropdown();
   });
 
