@@ -40,3 +40,75 @@ test('a field without a pattern only checks presence', () => {
   assert.equal(fields.drawnBy.found, true);
   assert.equal(fields.drawnBy.valid, true);
 });
+
+// --- Bug A: a label-only item must not swallow the next field's label as its value ---
+test('Bug A: a label with no real value does not swallow the next field label', () => {
+  const p = page([
+    { text: 'DWG NO:', x: 760, y: 700 },
+    { text: 'REV:', x: 800, y: 700 },
+    { text: 'A', x: 830, y: 700 },
+  ]);
+  const fields = locateFieldsOnPage(
+    p,
+    [
+      { id: 'dwgNo', label: 'DWG NO' },
+      { id: 'rev', label: 'REV' },
+    ],
+    region
+  );
+  assert.deepEqual(fields.dwgNo, { value: null, found: false, valid: false });
+  assert.deepEqual(fields.rev, { value: 'A', found: true, valid: true });
+});
+
+// --- Bug B: a label substring inside an unrelated word must not be matched ---
+test('Bug B: a label hiding inside an unrelated word is not matched', () => {
+  const p = page([
+    { text: 'UPDATED', x: 760, y: 700 },
+    { text: 'DATE: 2026-01-01', x: 760, y: 705 },
+  ]);
+  const fields = locateFieldsOnPage(p, [{ id: 'date', label: 'DATE' }], region);
+  assert.deepEqual(fields.date, { value: '2026-01-01', found: true, valid: true });
+});
+
+// --- Bug C: overlapping labels (one a prefix/suffix of another) must resolve independently ---
+test('Bug C: overlapping field labels resolve to their own values', () => {
+  const p = page([
+    { text: 'REVISION DATE: 2026-01-02', x: 760, y: 700 },
+    { text: 'DATE: 2026-01-01', x: 760, y: 720 },
+  ]);
+  const fields = locateFieldsOnPage(
+    p,
+    [
+      { id: 'date', label: 'DATE' },
+      { id: 'revDate', label: 'REVISION DATE' },
+    ],
+    region
+  );
+  assert.equal(fields.date.value, '2026-01-01');
+  assert.equal(fields.revDate.value, '2026-01-02');
+});
+
+// --- Input validation ---
+test('throws on an invalid region.corner', () => {
+  const p = page([{ text: 'DWG NO: AB-123', x: 800, y: 700 }]);
+  assert.throws(
+    () => locateFieldsOnPage(p, [{ id: 'dwgNo', label: 'DWG NO' }], { corner: 'rightt', widthPct: 30, heightPct: 25 }),
+    /Invalid region.corner/
+  );
+});
+
+test('throws on a non-finite region.widthPct', () => {
+  const p = page([{ text: 'DWG NO: AB-123', x: 800, y: 700 }]);
+  assert.throws(
+    () => locateFieldsOnPage(p, [{ id: 'dwgNo', label: 'DWG NO' }], { corner: 'bottom-right', widthPct: NaN, heightPct: 25 }),
+    /Invalid region.widthPct/
+  );
+});
+
+test('throws on a non-finite region.heightPct', () => {
+  const p = page([{ text: 'DWG NO: AB-123', x: 800, y: 700 }]);
+  assert.throws(
+    () => locateFieldsOnPage(p, [{ id: 'dwgNo', label: 'DWG NO' }], { corner: 'bottom-right', widthPct: 30, heightPct: undefined }),
+    /Invalid region.heightPct/
+  );
+});
