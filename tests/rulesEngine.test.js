@@ -57,22 +57,32 @@ test('evaluateFormattingRules skips disabled rules', () => {
 });
 
 test('evaluateProjectRules flags a mismatched project name', () => {
-  const pages = [page([{ text: 'PROJECT: Wrong Name', x: 800, y: 700 }])];
-  const issues = evaluateProjectRules(pages, { name: 'Right Name' }, region);
+  const pages = [page([{ text: 'PROJECT: WrongName', x: 800, y: 700 }])];
+  const issues = evaluateProjectRules(pages, [{ id: 'name', label: 'PROJECT', value: 'RightName' }], region);
   assert.equal(issues.length, 1);
   assert.equal(issues[0].category, 'project');
 });
 
 test('evaluateProjectRules produces no issues for an exact match', () => {
   const pages = [page([{ text: 'NAME: RightName', x: 800, y: 700 }])];
-  const issues = evaluateProjectRules(pages, { name: 'RightName' }, region);
+  const issues = evaluateProjectRules(pages, [{ id: 'name', label: 'NAME', value: 'RightName' }], region);
+  assert.equal(issues.length, 0);
+});
+
+test('evaluateProjectRules matches by literal drawing label, not the config id', () => {
+  // id ('name') deliberately differs from label ('PROJECT NAME'), which is the
+  // literal text that appears on the drawing. The old buggy implementation
+  // searched for the id itself (i.e. literal "name"), which never appears in
+  // this drawing text, so it would have reported this field as missing.
+  const pages = [page([{ text: 'PROJECT NAME: Acme', x: 800, y: 700 }])];
+  const issues = evaluateProjectRules(pages, [{ id: 'name', label: 'PROJECT NAME', value: 'Acme' }], region);
   assert.equal(issues.length, 0);
 });
 
 test('evaluateRules combines all enabled categories', () => {
   const pages = [page([{ text: 'DWG NO: AB-123', x: 800, y: 700 }])];
   const rulesConfig = {
-    project: { name: '' },
+    project: [],
     titleBlockRegion: region,
     rules: [
       { id: 'dwgNo', category: 'titleBlock', label: 'DWG NO', pattern: '^[A-Z]{2}-\\d{3}$', severity: 'error', enabled: true },

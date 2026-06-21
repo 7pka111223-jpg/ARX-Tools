@@ -29,6 +29,9 @@ export function evaluateFormattingRules(pages, formattingRules) {
   const issues = [];
   for (const rule of formattingRules) {
     if (!rule.enabled) continue;
+    // `rule.find`/`rule.valid` are assumed to be pre-validated regex strings; a malformed
+    // pattern here throws a SyntaxError that propagates out of evaluateRules uncaught. This is
+    // deliberately deferred to the future rules-management task that will own regex validation.
     const findRe = new RegExp(rule.find, 'g');
     const validRe = new RegExp(rule.valid);
     for (const p of pages) {
@@ -46,12 +49,12 @@ export function evaluateFormattingRules(pages, formattingRules) {
   return issues;
 }
 
-export function evaluateProjectRules(pages, project, region) {
+export function evaluateProjectRules(pages, projectFields, region) {
   const firstPage = pages[0];
   if (!firstPage) return [];
-  const requiredFields = Object.entries(project)
-    .filter(([, expected]) => expected)
-    .map(([id, expected]) => ({ id, category: 'project', label: id, pattern: `^${escapeRegex(expected)}$` }));
+  const requiredFields = projectFields
+    .filter((f) => f.value)
+    .map((f) => ({ id: f.id, category: 'project', label: f.label, pattern: `^${escapeRegex(f.value)}$` }));
   if (requiredFields.length === 0) return [];
 
   const fields = locateFieldsOnPage(firstPage, requiredFields, region);
@@ -59,10 +62,11 @@ export function evaluateProjectRules(pages, project, region) {
   for (const f of requiredFields) {
     const result = fields[f.id];
     if (!result.found || !result.valid) {
+      const original = projectFields.find((pf) => pf.id === f.id);
       issues.push({
         category: 'project', severity: 'error', ruleId: f.id,
         foundText: result.value, page: firstPage.pageNumber,
-        message: `Project field "${f.id}" expected "${project[f.id]}" but found "${result.value ?? '(missing)'}"`,
+        message: `Project field "${f.label}" expected "${original.value}" but found "${result.value ?? '(missing)'}"`,
       });
     }
   }
