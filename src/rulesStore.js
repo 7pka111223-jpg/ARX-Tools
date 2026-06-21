@@ -48,7 +48,10 @@ export function createRulesStore(initial = DEFAULT_RULES) {
 
     listRules: () => state.rules.map(({ id, category, label, enabled, severity }) => ({ id, category, label, enabled, severity })),
 
-    getRule: (id) => state.rules.find((r) => r.id === id) ?? null,
+    getRule: (id) => {
+      const rule = state.rules.find((r) => r.id === id);
+      return rule ? structuredClone(rule) : null;
+    },
 
     addRule(rule) {
       if (state.rules.some((r) => r.id === rule.id)) {
@@ -90,6 +93,7 @@ export function createRulesStore(initial = DEFAULT_RULES) {
     importRules(json) {
       const parsed = typeof json === 'string' ? JSON.parse(json) : json;
       validateRulesShape(parsed);
+      parsed.rules.forEach(validateRule);
       state = parsed;
     },
 

@@ -101,3 +101,33 @@ test('updateRule rejects an update that introduces an invalid regex', () => {
   const id = DEFAULT_RULES.rules[0].id; // dwgNo, category titleBlock, has a pattern
   assert.throws(() => store.updateRule(id, { pattern: '(' }));
 });
+
+test('getRule returns a clone, not a live reference into the store', () => {
+  const store = createRulesStore();
+  const id = DEFAULT_RULES.rules[0].id;
+  const rule = store.getRule(id);
+  rule.label = 'mutated';
+  assert.notEqual(store.getRule(id).label, 'mutated');
+});
+
+test('importRules rejects a rules file with an invalid severity and leaves previous state intact', () => {
+  const store = createRulesStore();
+  const before = store.listRules();
+
+  const bad = JSON.parse(store.exportRules());
+  bad.rules.push({ id: 'badImportSeverity', category: 'formatting', label: 'x', find: '\\d', valid: '^x$', message: 'm', severity: 'critical', enabled: true });
+
+  assert.throws(() => store.importRules(JSON.stringify(bad)));
+  assert.deepEqual(store.listRules(), before);
+});
+
+test('importRules rejects a rules file with an invalid regex and leaves previous state intact', () => {
+  const store = createRulesStore();
+  const before = store.listRules();
+
+  const bad = JSON.parse(store.exportRules());
+  bad.rules.push({ id: 'badImportRegex', category: 'titleBlock', label: 'x', pattern: '(', message: 'm', severity: 'error', enabled: true });
+
+  assert.throws(() => store.importRules(JSON.stringify(bad)));
+  assert.deepEqual(store.listRules(), before);
+});
