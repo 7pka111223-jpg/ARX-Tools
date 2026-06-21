@@ -16,3 +16,21 @@ test('each case result reports its name and ok flag', () => {
     assert.ok(Array.isArray(r.issues));
   }
 });
+
+test('issues content is correct for each synthetic case, independent of the ok flag', () => {
+  const result = runSelfTest();
+  const [complete, missingDwgNo, malformedDwgNo] = result.results;
+
+  assert.equal(complete.name, 'complete title block passes');
+  assert.equal(complete.issues.length, 0, JSON.stringify(complete.issues, null, 2));
+
+  assert.equal(missingDwgNo.name, 'missing drawing number fails');
+  const missingDwgNoIssue = missingDwgNo.issues.find((i) => i.ruleId === 'dwgNo');
+  assert.ok(missingDwgNoIssue, JSON.stringify(missingDwgNo.issues, null, 2));
+  assert.ok(missingDwgNoIssue.message.includes('Missing'), missingDwgNoIssue.message);
+
+  assert.equal(malformedDwgNo.name, 'malformed drawing number fails');
+  const malformedDwgNoIssue = malformedDwgNo.issues.find((i) => i.ruleId === 'dwgNo');
+  assert.ok(malformedDwgNoIssue, JSON.stringify(malformedDwgNo.issues, null, 2));
+  assert.equal(malformedDwgNoIssue.foundText, '12345');
+});
