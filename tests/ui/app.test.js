@@ -138,7 +138,7 @@ test('a second handleFiles call while one is in progress is ignored and does not
         const self = this;
         setTimeout(() => {
           self.onmessage({
-            data: { result: { fileName: msg.fileName, pass: true, issues: [], counts: { error: 0, warn: 0 } } },
+            data: { jobId: msg.jobId, result: { fileName: msg.fileName, pass: true, issues: [], counts: { error: 0, warn: 0 } } },
           });
         }, 0);
       },
@@ -169,4 +169,65 @@ test('a second handleFiles call while one is in progress is ignored and does not
 
   const summaryRows = root.querySelectorAll('#summaryTable tbody tr');
   assert.equal(summaryRows.length, 1);
+});
+
+test('handleFiles ignores stray messages that do not match the expected jobId', async () => {
+  setupDom();
+  const root = document.getElementById('app');
+
+  // Simulates pdfjs-dist's internal Worker handshake message leaking onto the
+  // same real Worker postMessage channel the app uses: a stray, jobId-less
+  // message arrives before the real result for the job. The fix must match on
+  // jobId and ignore the stray message rather than resolving with it.
+  const fakeWorker = {
+    postMessage(msg) {
+      this.onmessage({ data: { sourceName: 'worker', targetName: 'main', action: 'ready', data: null } });
+      this.onmessage({
+        data: { jobId: msg.jobId, result: { fileName: msg.fileName, pass: true, issues: [], counts: { error: 0, warn: 0 } } },
+      });
+    },
+    terminate() {},
+  };
+
+  const app = initApp(root, { createWorker: () => fakeWorker });
+  const file = { name: 'a.pdf', arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) };
+
+  await app.handleFiles([file]);
+
+  const rows = [...root.querySelectorAll('#summaryTable tbody tr')];
+  assert.equal(rows.length, 1);
+  assert.ok(rows[0].textContent.includes('PASS'));
+});
+
+test('handleFiles ignores a stray message with a mismatched jobId across multiple files', async () => {
+  setupDom();
+  const root = document.getElementById('app');
+
+  // Two files processed sequentially on one reused worker. The first file's
+  // postMessage call sends a stray message carrying a jobId that belongs to
+  // neither job before sending its own real result -- the resolution for
+  // file 'a.pdf' must wait for the message whose jobId === 'a.pdf', not
+  // resolve on the stray one.
+  const fakeWorker = {
+    postMessage(msg) {
+      this.onmessage({ data: { jobId: 'unrelated-job', result: { fileName: 'unrelated.pdf', pass: false, issues: [], counts: { error: 0, warn: 0 } } } });
+      this.onmessage({
+        data: { jobId: msg.jobId, result: { fileName: msg.fileName, pass: true, issues: [], counts: { error: 0, warn: 0 } } },
+      });
+    },
+    terminate() {},
+  };
+
+  const app = initApp(root, { createWorker: () => fakeWorker });
+  const file1 = { name: 'a.pdf', arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) };
+  const file2 = { name: 'b.pdf', arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) };
+
+  await app.handleFiles([file1, file2]);
+
+  const rows = [...root.querySelectorAll('#summaryTable tbody tr')];
+  assert.equal(rows.length, 2);
+  assert.ok(rows[0].textContent.includes('a.pdf'));
+  assert.ok(rows[0].textContent.includes('PASS'));
+  assert.ok(rows[1].textContent.includes('b.pdf'));
+  assert.ok(rows[1].textContent.includes('PASS'));
 });

@@ -72,7 +72,11 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
         for (const file of pdfFiles) {
           const pdfBytes = new Uint8Array(await file.arrayBuffer());
           const result = await new Promise((resolve) => {
-            worker.onmessage = (e) => resolve(e.data.result);
+            worker.onmessage = (e) => {
+              if (e.data && e.data.jobId === file.name) {
+                resolve(e.data.result);
+              }
+            };
             worker.postMessage({ fileName: file.name, pdfBytes, rulesConfig: store.getRules(), jobId: file.name }, [pdfBytes.buffer]);
           });
           drawingResults.push(result);
