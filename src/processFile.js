@@ -31,9 +31,20 @@ export async function processFile(fileName, pdfBytes, rulesConfig, spellInstance
     }]);
   }
 
-  const ruleIssues = evaluateRules(pages, rulesConfig);
-  const words = pages.flatMap((p) => p.items.flatMap((it) => splitWords(it.text, p.pageNumber)));
-  const spellIssues = checkSpelling(words, spellInstance, rulesConfig.spelling);
+  let ruleIssues;
+  let spellIssues;
+  try {
+    ruleIssues = evaluateRules(pages, rulesConfig);
+    const words = pages
+      .flatMap((p) => p.items.flatMap((it) => splitWords(it.text, p.pageNumber)))
+      .filter((w) => !/\d/.test(w.text));
+    spellIssues = checkSpelling(words, spellInstance, rulesConfig.spelling);
+  } catch (err) {
+    return buildDrawingResult(fileName, [{
+      category: 'config', severity: 'error', ruleId: 'invalidRules', foundText: null, page: null,
+      message: `Could not evaluate rules: ${err.message}`,
+    }]);
+  }
 
   return buildDrawingResult(fileName, [...ruleIssues, ...spellIssues]);
 }
