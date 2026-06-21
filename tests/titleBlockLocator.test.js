@@ -60,6 +60,17 @@ test('Bug A: a label with no real value does not swallow the next field label', 
   assert.deepEqual(fields.rev, { value: 'A', found: true, valid: true });
 });
 
+// --- Bug D: a label-only item's value, when it comes from a separate next item,
+// must capture the FULL text of that item, not just its first token ---
+test('Bug D: a label-only item takes the full multi-word text of the next item as its value', () => {
+  const p = page([
+    { text: 'DRAWN BY:', x: 760, y: 700 },
+    { text: 'JOHN SMITH', x: 800, y: 700 },
+  ]);
+  const fields = locateFieldsOnPage(p, [{ id: 'drawnBy', label: 'DRAWN BY' }], region);
+  assert.deepEqual(fields.drawnBy, { value: 'JOHN SMITH', found: true, valid: true });
+});
+
 // --- Bug B: a label substring inside an unrelated word must not be matched ---
 test('Bug B: a label hiding inside an unrelated word is not matched', () => {
   const p = page([

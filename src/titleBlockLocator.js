@@ -76,7 +76,7 @@ function findFieldValue(items, field, requiredFields) {
         return null;
       }
       const nextTrimmed = next.text.trim();
-      return nextTrimmed.length > 0 ? nextTrimmed.split(/\s+/)[0] : null;
+      return nextTrimmed.length > 0 ? nextTrimmed : null;
     }
 
     const sameMatch = text.match(sameRe);
