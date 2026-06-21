@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { extractPdfText } from '../src/pdfExtractor.js';
-import { makeFixturePdf } from './fixtures/makeFixturePdf.js';
+import { makeFixturePdf, makePageLoopCorruptPdf } from './fixtures/makeFixturePdf.js';
 
 test('extracts text items with page size and pageNumber', async () => {
   const bytes = await makeFixturePdf();
@@ -36,4 +36,17 @@ test('reports zero items when a page has no text', async () => {
   const bytes = await makeFixturePdf({ withText: false });
   const { pages } = await extractPdfText(bytes);
   assert.equal(pages[0].items.length, 0);
+});
+
+test('throws a CORRUPT-coded error for a failure inside the per-page loop (not document-open)', async () => {
+  // This PDF opens successfully (valid catalog/xref/trailer) but its page
+  // tree references a non-existent object, so the failure can only occur
+  // once extractPdfText starts iterating pages via doc.getPage(i) -- it
+  // proves the whole function body (not just getDocument) is covered by
+  // the CORRUPT/ENCRYPTED classification.
+  const bytes = await makePageLoopCorruptPdf();
+  await assert.rejects(
+    () => extractPdfText(bytes),
+    (err) => err.code === 'CORRUPT'
+  );
 });
