@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Engineering Drawing Checker</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 1.5rem; }
+  table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+  td, th { border: 1px solid #ccc; padding: 4px 8px; text-align: left; }
+  #dropZone { border: 2px dashed #888; padding: 2rem; text-align: center; margin-bottom: 1rem; }
+  .pass { color: green; font-weight: bold; }
+  .fail { color: red; font-weight: bold; }
+  #ruleEditor input, #ruleEditor select { display: block; margin: 4px 0; width: 100%; max-width: 400px; }
+</style>
+</head>
+<body>
+<h1>Engineering Drawing Checker</h1>
+<div id="app"></div>
+<script>
+  const WORKER_SOURCE = /*__WORKER_CODE__*/;
+  window.__createWorker = function () {
+    const blob = new Blob([WORKER_SOURCE], { type: 'application/javascript' });
+    return new Worker(URL.createObjectURL(blob));
+  };
+</script>
+<script>
+/*__APP_CODE__*/
+document.addEventListener('DOMContentLoaded', () => {
+  window.__drawingCheckerApp = initApp(document.getElementById('app'));
+});
+</script>
+</body>
+</html>
