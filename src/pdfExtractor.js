@@ -17,7 +17,17 @@ function toClassifiedError(err) {
 
 export async function extractPdfText(pdfBytes) {
   try {
-    const doc = await pdfjsLib.getDocument({ data: pdfBytes, password: '' }).promise;
+    const doc = await pdfjsLib.getDocument({
+      data: pdfBytes,
+      password: '',
+      // Suppress pdfjs-dist's benign "Setting up fake worker." console
+      // warning (we intentionally run pdfjs without a separate worker
+      // script since we're already inside our own dedicated Worker).
+      // ERRORS-only verbosity still lets real failures surface via thrown
+      // exceptions -- it only silences internal console.log/console.warn
+      // calls, not the error-classification logic below.
+      verbosity: pdfjsLib.VerbosityLevel.ERRORS,
+    }).promise;
 
     const pages = [];
     for (let i = 1; i <= doc.numPages; i++) {
