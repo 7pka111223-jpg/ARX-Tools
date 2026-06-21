@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderSummaryRow, renderRuleOption } from '../../src/ui/render.js';
+import { renderSummaryRow, renderRuleRow } from '../../src/ui/render.js';
 import { buildDrawingResult } from '../../src/resultsModel.js';
 
 test('renderSummaryRow shows PASS with the pass class for a passing drawing', () => {
@@ -16,17 +16,25 @@ test('renderSummaryRow shows FAIL with the fail class for a failing drawing', ()
   assert.ok(row.includes('class="fail"'));
 });
 
-test('renderRuleOption shows category, label, and a disabled marker when disabled', () => {
-  const enabled = renderRuleOption({ id: 'dwgNo', category: 'titleBlock', label: 'DWG NO', enabled: true });
-  assert.ok(enabled.includes('value="dwgNo"'));
-  assert.ok(enabled.includes('titleBlock: DWG NO'));
-  assert.ok(!enabled.includes('disabled'));
-
-  const disabled = renderRuleOption({ id: 'rev', category: 'revision', label: 'REV', enabled: false });
-  assert.ok(disabled.includes('(disabled)'));
+test('renderRuleRow shows label, category, severity, and per-row edit/delete actions', () => {
+  const row = renderRuleRow({ id: 'dwgNo', category: 'titleBlock', label: 'DWG NO', severity: 'error', enabled: true });
+  assert.ok(row.includes('data-rule-id="dwgNo"'));
+  assert.ok(row.includes('DWG NO'));
+  assert.ok(row.includes('titleBlock'));
+  assert.ok(row.includes('error'));
+  assert.ok(row.includes('rule-edit-btn'));
+  assert.ok(row.includes('rule-delete-btn'));
+  // An enabled rule shows no "Disabled" badge.
+  assert.ok(!row.includes('>Disabled<'));
 });
 
-test('renderRuleOption escapes html-unsafe labels', () => {
-  const opt = renderRuleOption({ id: 'x', category: 'formatting', label: '<b>x</b>', enabled: true });
-  assert.ok(!opt.includes('<b>x</b>'));
+test('renderRuleRow marks a disabled rule with a Disabled badge', () => {
+  const row = renderRuleRow({ id: 'rev', category: 'revision', label: 'REV', severity: 'warn', enabled: false });
+  assert.ok(row.includes('>Disabled<'));
+  assert.ok(row.includes('is-disabled'));
+});
+
+test('renderRuleRow escapes html-unsafe labels', () => {
+  const row = renderRuleRow({ id: 'x', category: 'formatting', label: '<b>x</b>', severity: 'warn', enabled: true });
+  assert.ok(!row.includes('<b>x</b>'));
 });

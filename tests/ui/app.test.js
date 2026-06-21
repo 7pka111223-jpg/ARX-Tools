@@ -13,26 +13,30 @@ function setupDom() {
   return dom;
 }
 
-test('renders one dropdown option per default rule', () => {
+function ruleRowIds(root) {
+  return [...root.querySelectorAll('#ruleList .rule-row')].map((r) => r.dataset.ruleId);
+}
+
+test('renders one rule row per default rule', () => {
   setupDom();
   const root = document.getElementById('app');
   initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
-  const options = root.querySelectorAll('#ruleSelect option');
-  assert.equal(options.length, DEFAULT_RULES.rules.length);
+  assert.equal(root.querySelectorAll('#ruleList .rule-row').length, DEFAULT_RULES.rules.length);
 });
 
-test('selecting a rule populates the editor fields', () => {
+test('clicking a rule\'s Edit button populates the editor fields and locks the id', () => {
   setupDom();
   const root = document.getElementById('app');
   initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
-  const select = root.querySelector('#ruleSelect');
-  select.value = 'dwgNo';
-  select.dispatchEvent(new window.Event('change'));
+  root.querySelector('.rule-edit-btn[data-rule-id="dwgNo"]').dispatchEvent(new window.Event('click', { bubbles: true }));
   assert.equal(root.querySelector('#ruleLabel').value, 'DWG NO');
   assert.equal(root.querySelector('#rulePattern').value, '^[A-Z]{2}-\\d{3}$');
+  // The id is locked to the rule being edited so saving modifies it in place.
+  assert.equal(root.querySelector('#ruleId').value, 'dwgNo');
+  assert.equal(root.querySelector('#ruleId').readOnly, true);
 });
 
-test('saving a new rule id adds it to the dropdown', () => {
+test('saving a new rule id adds it to the rule list', () => {
   setupDom();
   const root = document.getElementById('app');
   initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
@@ -44,22 +48,43 @@ test('saving a new rule id adds it to the dropdown', () => {
   root.querySelector('#ruleMessage').value = 'msg';
   root.querySelector('#saveRule').dispatchEvent(new window.Event('click'));
 
-  const ids = [...root.querySelectorAll('#ruleSelect option')].map((o) => o.value);
-  assert.ok(ids.includes('myNewRule'));
+  assert.ok(ruleRowIds(root).includes('myNewRule'));
 });
 
-test('removing the selected rule takes it out of the dropdown', () => {
+test('editing an existing rule and saving updates it in place (no duplicate row)', () => {
   setupDom();
   const root = document.getElementById('app');
   const app = initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
-  const select = root.querySelector('#ruleSelect');
-  select.value = 'dwgNo';
-  select.dispatchEvent(new window.Event('change'));
-  root.querySelector('#removeRule').dispatchEvent(new window.Event('click'));
 
-  const ids = [...root.querySelectorAll('#ruleSelect option')].map((o) => o.value);
-  assert.ok(!ids.includes('dwgNo'));
+  root.querySelector('.rule-edit-btn[data-rule-id="dwgNo"]').dispatchEvent(new window.Event('click', { bubbles: true }));
+  root.querySelector('#ruleLabel').value = 'DRAWING NUMBER';
+  root.querySelector('#saveRule').dispatchEvent(new window.Event('click'));
+
+  // Exactly one row for dwgNo, and the stored rule reflects the new label.
+  assert.equal(ruleRowIds(root).filter((id) => id === 'dwgNo').length, 1);
+  assert.equal(app.store.getRule('dwgNo').label, 'DRAWING NUMBER');
+});
+
+test('clicking a rule\'s Delete button removes it from the list and the store', () => {
+  setupDom();
+  const root = document.getElementById('app');
+  const app = initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
+  root.querySelector('.rule-delete-btn[data-rule-id="dwgNo"]').dispatchEvent(new window.Event('click', { bubbles: true }));
+
+  assert.ok(!ruleRowIds(root).includes('dwgNo'));
   assert.equal(app.store.getRule('dwgNo'), null);
+});
+
+test('the New rule button resets the editor out of edit mode', () => {
+  setupDom();
+  const root = document.getElementById('app');
+  initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
+  root.querySelector('.rule-edit-btn[data-rule-id="dwgNo"]').dispatchEvent(new window.Event('click', { bubbles: true }));
+  assert.equal(root.querySelector('#ruleId').readOnly, true);
+
+  root.querySelector('#newRule').dispatchEvent(new window.Event('click'));
+  assert.equal(root.querySelector('#ruleId').value, '');
+  assert.equal(root.querySelector('#ruleId').readOnly, false);
 });
 
 test('saving a rule with an invalid regex shows an alert and leaves the dropdown unchanged', () => {
@@ -80,8 +105,7 @@ test('saving a rule with an invalid regex shows an alert and leaves the dropdown
   root.querySelector('#ruleMessage').value = 'msg';
   root.querySelector('#saveRule').dispatchEvent(new window.Event('click'));
 
-  const ids = [...root.querySelectorAll('#ruleSelect option')].map((o) => o.value);
-  assert.ok(!ids.includes('badRegexRule'));
+  assert.ok(!ruleRowIds(root).includes('badRegexRule'));
   assert.equal(typeof alertMessage, 'string');
   assert.ok(alertMessage.length > 0);
 });
@@ -96,7 +120,7 @@ test('importing an invalid rules file shows an alert and leaves rules/dropdown u
     alertMessage = msg;
   };
 
-  const optionsBefore = [...root.querySelectorAll('#ruleSelect option')].map((o) => o.value);
+  const idsBefore = ruleRowIds(root);
 
   const badRules = {
     project: [],
@@ -120,8 +144,7 @@ test('importing an invalid rules file shows an alert and leaves rules/dropdown u
   assert.equal(typeof alertMessage, 'string');
   assert.ok(alertMessage.length > 0);
 
-  const optionsAfter = [...root.querySelectorAll('#ruleSelect option')].map((o) => o.value);
-  assert.deepEqual(optionsAfter, optionsBefore);
+  assert.deepEqual(ruleRowIds(root), idsBefore);
   assert.ok(app.store.getRule('badOne') == null);
 });
 
