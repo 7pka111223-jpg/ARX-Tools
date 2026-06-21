@@ -9,35 +9,96 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
   let busy = false;
 
   root.innerHTML = `
-    <div id="dropZone">Drag PDF files here or <input type="file" id="fileInput" multiple accept=".pdf"></div>
-    <progress id="progress" value="0" max="1" style="width:100%"></progress>
-    <table id="summaryTable"><thead><tr><th>File</th><th>Result</th><th>Errors</th><th>Warnings</th></tr></thead><tbody></tbody></table>
-    <div>
-      <button id="exportHtml">Export HTML report</button>
-      <button id="exportCsv">Export CSV</button>
-      <button id="runSelfTest">Run self-test</button>
-    </div>
-    <h2>Rules</h2>
-    <select id="ruleSelect"></select>
-    <button id="removeRule">Remove selected rule</button>
-    <button id="exportRules">Export rules</button>
-    <input type="file" id="importRules" accept=".json">
-    <div id="ruleEditor">
-      <input type="text" id="ruleId" placeholder="id">
-      <select id="ruleCategory">
-        <option value="titleBlock">titleBlock</option>
-        <option value="revision">revision</option>
-        <option value="formatting">formatting</option>
-      </select>
-      <input type="text" id="ruleLabel" placeholder="label">
-      <input type="text" id="rulePattern" placeholder="pattern (titleBlock/revision)">
-      <input type="text" id="ruleFind" placeholder="find regex (formatting)">
-      <input type="text" id="ruleValid" placeholder="valid regex (formatting)">
-      <input type="text" id="ruleMessage" placeholder="message">
-      <select id="ruleSeverity"><option value="error">error</option><option value="warn">warn</option></select>
-      <label><input type="checkbox" id="ruleEnabled" checked> enabled</label>
-      <button id="saveRule">Save rule</button>
-    </div>
+    <section class="card">
+      <div id="dropZone">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0-12 4 4m-4-4-4 4"/><path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"/></svg>
+        <span class="drop-label">Drag PDF drawings here</span>
+        <span class="drop-sub">or choose files from your computer — nothing leaves this machine</span>
+        <input type="file" id="fileInput" multiple accept=".pdf">
+        <label class="btn btn-primary btn-file-label" for="fileInput">Choose Files</label>
+      </div>
+      <progress id="progress" value="0" max="1"></progress>
+      <table id="summaryTable">
+        <thead><tr><th>File</th><th>Result</th><th>Errors</th><th>Warnings</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="toolbar">
+        <button id="exportHtml" class="btn">Export HTML report</button>
+        <button id="exportCsv" class="btn">Export CSV</button>
+        <button id="runSelfTest" class="btn">Run self-test</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card__header">
+        <h2 class="card__title">Rules</h2>
+        <span class="card__hint">Add, edit, or remove checks — no JSON editing required</span>
+      </div>
+      <div class="rules-layout">
+        <div class="rules-list">
+          <select id="ruleSelect" size="8"></select>
+          <div class="toolbar" style="margin-top:8px">
+            <button id="removeRule" class="btn btn-danger">Remove selected</button>
+          </div>
+          <hr class="divider">
+          <div class="field">
+            <label for="importRules">Import rules file</label>
+            <input type="file" id="importRules" accept=".json">
+          </div>
+          <button id="exportRules" class="btn">Export current rules</button>
+        </div>
+
+        <div id="ruleEditor">
+          <div class="field-row">
+            <div class="field">
+              <label for="ruleId">Rule ID</label>
+              <input type="text" id="ruleId" placeholder="e.g. dwgNo">
+            </div>
+            <div class="field">
+              <label for="ruleCategory">Category</label>
+              <select id="ruleCategory">
+                <option value="titleBlock">titleBlock</option>
+                <option value="revision">revision</option>
+                <option value="formatting">formatting</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label for="ruleLabel">Label on drawing</label>
+            <input type="text" id="ruleLabel" placeholder="e.g. DWG NO">
+          </div>
+          <div class="field">
+            <label for="rulePattern">Pattern <span class="field-hint">(titleBlock / revision — exact value must match)</span></label>
+            <input type="text" id="rulePattern" placeholder="^[A-Z]{2}-\\d{3}$">
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="ruleFind">Find regex <span class="field-hint">(formatting)</span></label>
+              <input type="text" id="ruleFind" placeholder="\\d{1,2}/\\d{1,2}/\\d{2,4}">
+            </div>
+            <div class="field">
+              <label for="ruleValid">Valid regex <span class="field-hint">(formatting)</span></label>
+              <input type="text" id="ruleValid" placeholder="^\\d{4}-\\d{2}-\\d{2}$">
+            </div>
+          </div>
+          <div class="field">
+            <label for="ruleMessage">Message shown when this rule fails</label>
+            <input type="text" id="ruleMessage" placeholder="e.g. Use ISO date format (YYYY-MM-DD)">
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="ruleSeverity">Severity</label>
+              <select id="ruleSeverity"><option value="error">error</option><option value="warn">warn</option></select>
+            </div>
+            <div class="field field-checkbox" style="margin-top:22px">
+              <input type="checkbox" id="ruleEnabled" checked>
+              <label for="ruleEnabled" style="margin:0">Enabled</label>
+            </div>
+          </div>
+          <button id="saveRule" class="btn btn-primary">Save rule</button>
+        </div>
+      </div>
+    </section>
   `;
 
   const fileInput = root.querySelector('#fileInput');
@@ -94,8 +155,11 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
 
   fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
   dropZone.addEventListener('dragover', (e) => e.preventDefault());
+  dropZone.addEventListener('dragenter', () => dropZone.classList.add('is-dragover'));
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('is-dragover'));
   dropZone.addEventListener('drop', (e) => {
     e.preventDefault();
+    dropZone.classList.remove('is-dragover');
     handleFiles(e.dataTransfer.files);
   });
 

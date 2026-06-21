@@ -11,9 +11,12 @@ test('npm run build produces a single self-contained HTML file with no leftover 
   assert.ok(!html.includes('__WORKER_CODE__'));
   assert.ok(!html.includes('__APP_CODE__'));
   assert.ok(html.includes('new Worker('));
-  // No reference to any external script/style source -> fully self-contained.
-  assert.ok(!/<script[^>]+src=/.test(html));
-  assert.ok(!/<link[^>]+href=/.test(html));
+  // No reference to any EXTERNAL script/style/resource -> fully self-contained.
+  // A data: URI (e.g. an inline favicon) carries no network dependency, so it
+  // is deliberately allowed; anything else (http(s):, protocol-relative, or a
+  // relative/absolute path to a second file) is not.
+  assert.ok(!/<script[^>]+src=(?!["']?data:)/.test(html));
+  assert.ok(!/<link[^>]+href=(?!["']?data:)/.test(html));
   // Guard against a `</script` breakout: JSON.stringify (used by build.js to
   // embed the worker/app bundles) does not escape '<', '>', or '/', so a
   // literal "</script" substring inside a future dependency bump's bundled
