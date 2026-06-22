@@ -20,9 +20,12 @@ export a report.
 
 `pdf-text-editor.html` is a separate, standalone single-file tool for
 **editing** text inside PDF engineering drawings. Open the file directly in
-a browser (no build, no install, no network — nothing is uploaded). Drop a
-PDF in, type the text to find and what to replace it with, preview the
-matches, then download the edited PDF.
+a browser (no build, no install, no network — nothing is uploaded). Drop one
+or more PDFs in, type the text to find and what to replace it with, preview
+the matches, then download the edited files. The same find/replace is applied
+to every loaded file; a single file downloads as a PDF, multiple files
+download together as a ZIP (and each can be downloaded individually from the
+list).
 
 It edits the PDF's text content streams in place and writes the result as an
 incremental update, so the **font, size, position and all other formatting

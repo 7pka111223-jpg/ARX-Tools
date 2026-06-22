@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PDF Text Editor — Find &amp; Replace for Engineering Drawings</title>
+<title>PDF Text Editor — Batch Find &amp; Replace for Engineering Drawings</title>
 <style>
   :root{
     --bg:#0f172a; --panel:#1e293b; --panel2:#273449; --line:#334155;
@@ -49,12 +49,14 @@
   button:hover:not(:disabled){border-color:var(--accent)}
   button.primary{background:var(--accent2); border-color:var(--accent2); color:#04121f}
   button.primary:hover:not(:disabled){background:var(--accent)}
+  button.ghost{background:transparent}
   button:disabled{opacity:.45; cursor:not-allowed}
   .meta{font-size:12px; color:var(--muted); margin-top:10px}
   .pill{display:inline-block; padding:2px 9px; border-radius:999px; font-size:12px; font-weight:600}
   .pill.good{background:rgba(52,211,153,.15); color:var(--good)}
   .pill.warn{background:rgba(251,191,36,.15); color:var(--warn)}
   .pill.bad{background:rgba(248,113,113,.15); color:var(--bad)}
+  .pill.idle{background:rgba(148,163,184,.15); color:var(--muted)}
   .log{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; white-space:pre-wrap; max-height:260px; overflow:auto; background:#0b1426; border:1px solid var(--line); border-radius:8px; padding:12px}
   .matches{max-height:320px; overflow:auto; border:1px solid var(--line); border-radius:8px}
   .matches table{width:100%; border-collapse:collapse; font-size:13px}
@@ -68,23 +70,38 @@
   details ul{margin:8px 0 0; padding-left:20px; color:var(--muted); font-size:12.5px}
   details li{margin:4px 0}
   .empty{color:var(--muted); padding:14px; text-align:center; font-size:13px}
+  /* file list */
+  .files{margin-top:14px; border:1px solid var(--line); border-radius:8px; overflow:hidden}
+  .frow{display:flex; align-items:center; gap:12px; padding:9px 12px; border-bottom:1px solid var(--line); background:#0b1426}
+  .frow:last-child{border-bottom:0}
+  .frow .nm{flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600}
+  .frow .sz{color:var(--muted); font-size:12px; white-space:nowrap}
+  .frow .st{white-space:nowrap}
+  .frow .dl{font-size:12px; color:var(--accent); cursor:pointer; text-decoration:underline; background:none; border:0; padding:0}
+  .frow .rm{color:var(--muted); cursor:pointer; font-size:16px; line-height:1; background:none; border:0; padding:0 2px}
+  .frow .rm:hover{color:var(--bad)}
+  .filehdr{display:flex; align-items:center; justify-content:space-between; margin-top:6px}
 </style>
 </head>
 <body>
 <header>
-  <h1>PDF Text Editor — Find &amp; Replace</h1>
-  <p>Edit text inside engineering drawings in your browser. Same font, same size, same position — only the characters change. 100% offline, single file, nothing uploaded.</p>
+  <h1>PDF Text Editor — Batch Find &amp; Replace</h1>
+  <p>Apply the same text edit to one or many engineering drawings at once. Same font, same size, same position — only the characters change. 100% offline, single file, nothing uploaded.</p>
 </header>
 
 <main>
   <div class="panel">
-    <h2>1 · Open a PDF</h2>
+    <h2>1 · Open PDFs</h2>
     <div id="drop" class="drop">
-      <strong>Drop a PDF here</strong> or click to choose a file<br>
+      <strong>Drop one or more PDFs here</strong> or click to choose files<br>
       <span class="hint">Files stay on your computer — nothing is sent anywhere.</span>
     </div>
-    <input id="file" type="file" accept="application/pdf,.pdf" hidden>
-    <div id="fileMeta" class="meta"></div>
+    <input id="file" type="file" accept="application/pdf,.pdf" multiple hidden>
+    <div id="fileList" class="files" style="display:none"></div>
+    <div class="filehdr">
+      <div id="fileSummary" class="meta"></div>
+      <button id="clearBtn" class="ghost" style="display:none">Remove all</button>
+    </div>
   </div>
 
   <div class="panel">
@@ -105,28 +122,28 @@
     </div>
     <div class="btns">
       <button id="scanBtn" disabled>Scan / preview matches</button>
-      <button id="applyBtn" class="primary" disabled>Replace &amp; download PDF</button>
-      <button id="extractBtn" disabled>Show all editable text</button>
+      <button id="applyBtn" class="primary" disabled>Replace &amp; download all</button>
+      <button id="extractBtn" disabled>Show editable text</button>
     </div>
     <div id="status" class="meta"></div>
   </div>
 
   <div class="panel" id="matchPanel" style="display:none">
-    <h2>Matches</h2>
+    <h2 id="matchTitle">Matches</h2>
     <div id="matches" class="matches"></div>
   </div>
 
   <div class="panel">
     <h2>Activity log</h2>
-    <div id="log" class="log">Ready. Open a PDF to begin.</div>
+    <div id="log" class="log">Ready. Open one or more PDFs to begin.</div>
     <details>
       <summary>What this tool can and cannot edit</summary>
       <ul>
         <li><strong>Works:</strong> PDFs whose text is real, selectable text drawn with embedded or standard fonts using ASCII/Latin-1 encoding (most CAD exports, title blocks, notes, revision tags).</li>
         <li><strong>Preserved exactly:</strong> font, size, position, color, rotation and all other graphics. Only the string operand of the text is changed, written back as an incremental update so the rest of the file is untouched.</li>
-        <li><strong>Cannot edit:</strong> text that the CAD program exported as vector outlines/curves (it is geometry, not text — nothing to find). Use "Show all editable text" to confirm what is real text.</li>
-        <li><strong>Limited:</strong> subset or CID fonts that use custom non-ASCII encodings; the new characters may not have glyphs in the embedded subset. The tool reports when text cannot be matched.</li>
-        <li><strong>Glyph note:</strong> if you replace with characters the embedded font does not contain (e.g. a symbol), they may render as blanks. Stick to characters already used in the drawing for guaranteed results.</li>
+        <li><strong>Batch:</strong> the same find/replace is applied to every loaded file independently. One file downloads as a PDF; multiple files download together as a ZIP (you can also download each from the list).</li>
+        <li><strong>Cannot edit:</strong> text that the CAD program exported as vector outlines/curves (it is geometry, not text). Use "Show editable text" to confirm what is real text.</li>
+        <li><strong>Limited:</strong> subset or CID fonts with custom non-ASCII encodings; replacement characters may lack glyphs in the embedded subset. Prefer characters already used in the drawing.</li>
       </ul>
     </details>
   </div>
@@ -135,30 +152,25 @@
 <script>
 "use strict";
 /* =========================================================================
-   PDF Text Editor — self-contained, no dependencies, no network.
-   Strategy:
-     * Parse indirect objects by scanning the raw file.
-     * For each FlateDecode (or raw) content stream, inflate with the native
-       DecompressionStream, find Tj / TJ / ' / " string operands, and replace
-       the target text inside them only.
-     * Re-deflate with CompressionStream, rewrite the object with a direct
-       /Length, then append it as an INCREMENTAL UPDATE with a fresh classic
-       xref + trailer (/Prev -> old startxref). Everything else stays byte
-       identical, which is what preserves fonts and formatting.
+   PDF Text Editor (batch) — self-contained, no dependencies, no network.
+   Replaces text inside PDF content streams (Tj/TJ/'/" operands only),
+   preserving font/size/position, written as an incremental update. Works
+   over many files at once. ZIP packaging is a vanilla STORE-method writer.
    ========================================================================= */
 
 const $ = id => document.getElementById(id);
 const els = {
-  drop:$('drop'), file:$('file'), fileMeta:$('fileMeta'),
+  drop:$('drop'), file:$('file'), fileList:$('fileList'), fileSummary:$('fileSummary'), clearBtn:$('clearBtn'),
   find:$('find'), repl:$('repl'), cs:$('cs'), ww:$('ww'),
   scanBtn:$('scanBtn'), applyBtn:$('applyBtn'), extractBtn:$('extractBtn'),
-  status:$('status'), log:$('log'), matchPanel:$('matchPanel'), matches:$('matches'),
+  status:$('status'), log:$('log'), matchPanel:$('matchPanel'), matchTitle:$('matchTitle'), matches:$('matches'),
 };
 
-let pdfBytes = null;     // Uint8Array of the loaded file
-let pdfName  = 'document.pdf';
+// Each entry: { id, name, bytes, status:'idle'|'ok'|'warn'|'bad', note, edited:Uint8Array|null }
+let files = [];
+let nextId = 1;
 
-/* ---------- tiny logging ---------- */
+/* ---------- logging ---------- */
 function log(msg, kind){
   const t = new Date().toLocaleTimeString();
   const prefix = kind === 'err' ? '✗ ' : kind === 'ok' ? '✓ ' : '· ';
@@ -168,7 +180,7 @@ function log(msg, kind){
 function setStatus(html){ els.status.innerHTML = html; }
 function clearLog(){ els.log.textContent = 'Ready.'; }
 
-/* ---------- byte <-> latin1 string helpers (index == byte offset) ---------- */
+/* ---------- byte <-> latin1 string (index == byte offset) ---------- */
 function bytesToStr(bytes){
   let s = ''; const CH = 0x8000;
   for(let i=0;i<bytes.length;i+=CH) s += String.fromCharCode.apply(null, bytes.subarray(i, i+CH));
@@ -208,13 +220,11 @@ async function deflate(bytes){
    PDF object scanning
    ========================================================================= */
 function scanObjects(str){
-  // returns array of {num, gen, start, dictStart, dictEnd, isStream,
-  //                   streamStart, streamEnd, end, raw}
   const objs = [];
   const re = /(\d+)\s+(\d+)\s+obj\b/g;
   let m;
   while((m = re.exec(str))){
-    const num = +m[1], gen = +m[2], start = m.index;
+    const num = +m[1], gen = +m[2];
     const endIdx = str.indexOf('endobj', m.index);
     if(endIdx < 0) continue;
     const body = str.slice(m.index + m[0].length, endIdx);
@@ -222,7 +232,6 @@ function scanObjects(str){
     let isStream=false, streamStart=-1, streamEnd=-1, dictEnd=endIdx;
     if(sIdx >= 0){
       isStream = true;
-      // stream data begins right after 'stream' + (CRLF | LF | CR)
       let p = m.index + m[0].length + sIdx + 'stream'.length;
       if(str[p]==='\r' && str[p+1]==='\n') p += 2;
       else if(str[p]==='\n' || str[p]==='\r') p += 1;
@@ -233,7 +242,7 @@ function scanObjects(str){
       dictEnd = m.index + m[0].length + sIdx;
     }
     objs.push({
-      num, gen, start,
+      num, gen, start:m.index,
       dictStart: m.index + m[0].length,
       dictEnd, isStream, streamStart, streamEnd,
       end: endIdx + 'endobj'.length,
@@ -255,7 +264,6 @@ function dictHasPredictor(dict){
   return p && +p[1] >= 2;
 }
 function looksLikeContent(text){
-  // content streams contain text/painting operators
   return /\bBT\b|\bTj\b|\bTJ\b|\bTf\b|\bTd\b|\bTD\b/.test(text);
 }
 
@@ -263,7 +271,6 @@ function looksLikeContent(text){
    PDF string-operand decode / encode
    ========================================================================= */
 function decodeLiteral(s){
-  // s is the inside of a (...) literal; return decoded latin1 byte-string
   let out = '';
   for(let i=0;i<s.length;i++){
     const c = s[i];
@@ -281,13 +288,9 @@ function decodeLiteral(s){
         for(let k=0;k<2 && s[i+1] >= '0' && s[i+1] <= '7';k++){ oct += s[++i]; }
         out += String.fromCharCode(parseInt(oct,8) & 0xff);
       }
-      else if(n === '\r' || n === '\n'){ // line continuation
-        i++; if(n==='\r' && s[i+1]==='\n') i++;
-      }
-      else { out += n; i++; } // unknown escape -> literal char
-    } else {
-      out += c;
-    }
+      else if(n === '\r' || n === '\n'){ i++; if(n==='\r' && s[i+1]==='\n') i++; }
+      else { out += n; i++; }
+    } else { out += c; }
   }
   return out;
 }
@@ -316,8 +319,7 @@ function encodeHex(bytestr){
 }
 
 /* =========================================================================
-   Replace inside a decoded content-stream string
-   Operates on string operands of Tj/TJ/'/". Returns {text, count, samples}
+   Replace inside content-stream string operands
    ========================================================================= */
 function buildMatcher(find, caseSensitive, wholeWord){
   const esc = find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -327,8 +329,6 @@ function buildMatcher(find, caseSensitive, wholeWord){
 }
 
 function processContent(content, find, replace, opts){
-  // content: latin1 string of decompressed content stream
-  // Walk through and rewrite (...) and <...> string operands.
   let out = '';
   let i = 0;
   let count = 0;
@@ -350,7 +350,7 @@ function processContent(content, find, replace, opts){
   function replaceIn(decoded){
     const re = buildMatcher(find, opts.caseSensitive, opts.wholeWord);
     let local = 0;
-    const res = decoded.replace(re, (mm)=>{ local++; return replace; });
+    const res = decoded.replace(re, ()=>{ local++; return replace; });
     if(local){ recordSample(decoded); count += local; }
     return {res, local};
   }
@@ -358,7 +358,6 @@ function processContent(content, find, replace, opts){
   while(i < N){
     const c = content[i];
     if(c === '('){
-      // read balanced literal
       let depth = 1, j = i+1, inner = '';
       while(j < N && depth > 0){
         const cc = content[j];
@@ -372,7 +371,6 @@ function processContent(content, find, replace, opts){
       out += local ? '(' + encodeLiteral(res) + ')' : '(' + inner + ')';
       i = j + 1;
     } else if(c === '<' && content[i+1] !== '<'){
-      // hex string
       let j = i+1, inner = '';
       while(j < N && content[j] !== '>'){ inner += content[j]; j++; }
       const decoded = decodeHex(inner);
@@ -388,7 +386,6 @@ function processContent(content, find, replace, opts){
   return {text: out, count, samples};
 }
 
-/* Extract plain text (for the "show editable text" view) */
 function extractText(content){
   let out = [];
   let i = 0; const N = content.length;
@@ -415,41 +412,34 @@ function extractText(content){
 }
 
 /* =========================================================================
-   Core: walk content streams, optionally replace.
-   mode: 'scan' | 'apply' | 'extract'
+   Per-file processing.  mode: 'scan' | 'apply' | 'extract'
    ========================================================================= */
-async function runOverContentStreams(mode, find, replace, opts){
+async function runOverContentStreams(pdfBytes, mode, find, replace, opts){
   const str = bytesToStr(pdfBytes);
   const objs = scanObjects(str);
   const result = {
     streamsSeen:0, contentStreams:0, totalMatches:0, samples:[],
-    modified:[], skippedPredictor:0, skippedFilter:0, inflateFail:0,
-    extracted:[]
+    modified:[], skippedPredictor:0, inflateFail:0, extracted:[]
   };
 
   for(const o of objs){
     if(!o.isStream) continue;
     result.streamsSeen++;
-
-    if(dictHasOtherFilterOnly(o.dict)){ continue; } // images etc.
+    if(dictHasOtherFilterOnly(o.dict)){ continue; }
     const flate = dictHasFlate(o.dict);
 
-    // pull raw stream bytes
-    let rawLen = o.streamEnd - o.streamStart;
-    // trim trailing EOL before 'endstream'
     let endTrim = o.streamEnd;
     if(str[endTrim-1]==='\n') endTrim--;
     if(str[endTrim-1]==='\r') endTrim--;
     const rawStr = str.slice(o.streamStart, endTrim);
-    let raw = strToBytes(rawStr);
 
     let content;
     if(flate){
       if(dictHasPredictor(o.dict)){ result.skippedPredictor++; continue; }
-      try{ content = bytesToStr(await inflate(raw)); }
+      try{ content = bytesToStr(await inflate(strToBytes(rawStr))); }
       catch(e){ result.inflateFail++; continue; }
     } else {
-      content = rawStr; // uncompressed content stream
+      content = rawStr;
     }
 
     if(!looksLikeContent(content)) continue;
@@ -466,7 +456,6 @@ async function runOverContentStreams(mode, find, replace, opts){
       result.totalMatches += count;
       for(const s of samples){ if(result.samples.length < 80) result.samples.push(s); }
       if(mode === 'apply'){
-        // re-encode object
         const newContentBytes = strToBytes(text);
         let newStreamBytes, newDict;
         if(flate){
@@ -486,7 +475,6 @@ async function runOverContentStreams(mode, find, replace, opts){
 function setLength(dict, len){
   if(/\/Length\s+(\d+\s+\d+\s+R|\d+)/.test(dict))
     return dict.replace(/\/Length\s+(?:\d+\s+\d+\s+R|\d+)/, '/Length ' + len);
-  // insert before final >>
   return dict.replace(/>>\s*$/, ' /Length ' + len + ' >>');
 }
 function stripPredictor(dict){
@@ -496,29 +484,30 @@ function stripPredictor(dict){
 }
 
 /* =========================================================================
-   Build incremental update
+   Incremental update writer
    ========================================================================= */
 function getTrailerInfo(str){
-  // find last startxref offset
   let oldStartxref = null;
   const sx = str.lastIndexOf('startxref');
   if(sx >= 0){
     const m = str.slice(sx).match(/startxref\s+(\d+)/);
     if(m) oldStartxref = +m[1];
   }
-  // Root + Size: prefer a classic trailer, else search whole file
   let root = null, size = null;
   const tIdx = str.lastIndexOf('trailer');
   let scope = tIdx >= 0 ? str.slice(tIdx) : str;
   let rm = scope.match(/\/Root\s+(\d+)\s+(\d+)\s+R/);
-  if(!rm) rm = str.match(/\/Root\s+(\d+)\s+(\d+)\s+R/g) && (()=>{ const all=[...str.matchAll(/\/Root\s+(\d+)\s+(\d+)\s+R/g)]; return all[all.length-1]; })();
+  if(!rm){
+    const all = [...str.matchAll(/\/Root\s+(\d+)\s+(\d+)\s+R/g)];
+    if(all.length) rm = all[all.length-1];
+  }
   if(rm) root = { num:+rm[1], gen:+rm[2] };
   const allSize = [...str.matchAll(/\/Size\s+(\d+)/g)];
   if(allSize.length) size = +allSize[allSize.length-1][1];
   return { oldStartxref, root, size };
 }
 
-async function buildIncrementalUpdate(modified){
+function buildIncrementalUpdate(pdfBytes, modified){
   const baseStr = bytesToStr(pdfBytes);
   const info = getTrailerInfo(baseStr);
   if(!info.root) throw new Error('Could not locate /Root — unusual PDF structure.');
@@ -526,11 +515,10 @@ async function buildIncrementalUpdate(modified){
 
   const parts = [pdfBytes];
   let offset = pdfBytes.length;
-  // ensure base ends with newline
   const lastByte = pdfBytes[pdfBytes.length-1];
   if(lastByte !== 0x0a && lastByte !== 0x0d){ parts.push(strToBytes('\n')); offset += 1; }
 
-  const xrefEntries = []; // {num, gen, offset}
+  const xrefEntries = [];
   let maxNum = info.size ? info.size - 1 : 0;
 
   for(const mo of modified){
@@ -547,7 +535,6 @@ async function buildIncrementalUpdate(modified){
     if(mo.num > maxNum) maxNum = mo.num;
   }
 
-  // classic xref (one subsection per object)
   xrefEntries.sort((a,b)=>a.num-b.num);
   let xref = 'xref\n';
   for(const e of xrefEntries){
@@ -559,9 +546,99 @@ async function buildIncrementalUpdate(modified){
     `trailer\n<< /Size ${maxNum+1} /Root ${info.root.num} ${info.root.gen} R /Prev ${info.oldStartxref} >>\n` +
     `startxref\n${xrefOffset}\n%%EOF\n`;
   parts.push(strToBytes(xref + trailer));
-
   return concatBytes(parts);
 }
+
+/* =========================================================================
+   Minimal ZIP writer (STORE method, no compression) + CRC32
+   ========================================================================= */
+const CRC_TABLE = (()=>{
+  const t = new Uint32Array(256);
+  for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c = (c&1) ? (0xEDB88320 ^ (c>>>1)) : (c>>>1); t[n]=c>>>0; }
+  return t;
+})();
+function crc32(bytes){
+  let c = 0xFFFFFFFF;
+  for(let i=0;i<bytes.length;i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c>>>8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function makeZip(entries){
+  const enc = new TextEncoder();
+  const chunks = [];
+  const central = [];
+  let offset = 0;
+  const DOSTIME = 0, DOSDATE = 0x21; // 1980-01-01
+  for(const e of entries){
+    const nameBytes = enc.encode(e.name);
+    const crc = crc32(e.bytes);
+    const size = e.bytes.length;
+    const lh = new Uint8Array(30 + nameBytes.length);
+    const dv = new DataView(lh.buffer);
+    dv.setUint32(0, 0x04034b50, true);
+    dv.setUint16(4, 20, true); dv.setUint16(6, 0, true); dv.setUint16(8, 0, true);
+    dv.setUint16(10, DOSTIME, true); dv.setUint16(12, DOSDATE, true);
+    dv.setUint32(14, crc, true); dv.setUint32(18, size, true); dv.setUint32(22, size, true);
+    dv.setUint16(26, nameBytes.length, true); dv.setUint16(28, 0, true);
+    lh.set(nameBytes, 30);
+    chunks.push(lh, e.bytes);
+
+    const ch = new Uint8Array(46 + nameBytes.length);
+    const cv = new DataView(ch.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(4, 20, true); cv.setUint16(6, 20, true); cv.setUint16(8, 0, true); cv.setUint16(10, 0, true);
+    cv.setUint16(12, DOSTIME, true); cv.setUint16(14, DOSDATE, true);
+    cv.setUint32(16, crc, true); cv.setUint32(20, size, true); cv.setUint32(24, size, true);
+    cv.setUint16(28, nameBytes.length, true);
+    cv.setUint32(42, offset, true);
+    ch.set(nameBytes, 46);
+    central.push(ch);
+
+    offset += lh.length + size;
+  }
+  const cdStart = offset;
+  let cdSize = 0; for(const c of central) cdSize += c.length;
+  const eocd = new Uint8Array(22);
+  const ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, entries.length, true); ev.setUint16(10, entries.length, true);
+  ev.setUint32(12, cdSize, true); ev.setUint32(16, cdStart, true);
+  return concatBytes([...chunks, ...central, eocd]);
+}
+
+/* =========================================================================
+   UI: file list
+   ========================================================================= */
+function fmtSize(n){ return n < 1024*1024 ? (n/1024).toFixed(0)+' KB' : (n/1048576).toFixed(1)+' MB'; }
+
+function renderFiles(){
+  if(!files.length){
+    els.fileList.style.display = 'none';
+    els.clearBtn.style.display = 'none';
+    els.fileSummary.textContent = '';
+    enableActions(false);
+    return;
+  }
+  els.fileList.style.display = 'block';
+  els.clearBtn.style.display = 'inline-block';
+  els.fileList.innerHTML = files.map(f => {
+    const st = f.status === 'ok' ? `<span class="pill good">${f.note}</span>`
+             : f.status === 'warn' ? `<span class="pill warn">${f.note}</span>`
+             : f.status === 'bad' ? `<span class="pill bad">${f.note}</span>`
+             : `<span class="pill idle">ready</span>`;
+    const dl = f.edited ? `<button class="dl" data-dl="${f.id}">download</button>` : '';
+    return `<div class="frow">
+      <span class="nm" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
+      <span class="sz">${fmtSize(f.bytes.length)}</span>
+      <span class="st">${st}</span>
+      ${dl}
+      <button class="rm" data-rm="${f.id}" title="Remove">✕</button>
+    </div>`;
+  }).join('');
+  els.fileSummary.textContent = `${files.length} file${files.length>1?'s':''} loaded`;
+  enableActions(true);
+}
+
+function setFileStatus(f, status, note){ f.status = status; f.note = note; }
 
 /* =========================================================================
    UI wiring
@@ -572,120 +649,174 @@ function enableActions(on){
   els.extractBtn.disabled = !on;
 }
 
-function loadFile(file){
-  if(!file) return;
-  if(!/pdf$/i.test(file.name) && file.type !== 'application/pdf'){
-    log('That does not look like a PDF.', 'err'); return;
-  }
-  const fr = new FileReader();
-  fr.onload = () => {
-    pdfBytes = new Uint8Array(fr.result);
-    pdfName = file.name;
-    const head = bytesToStr(pdfBytes.subarray(0, 8));
-    els.fileMeta.innerHTML =
-      `<span class="pill ${head.startsWith('%PDF-')?'good':'warn'}">${head.startsWith('%PDF-')?'PDF ok':'not %PDF?'}</span> ` +
-      `<strong>${file.name}</strong> — ${(file.size/1024).toFixed(0)} KB` +
-      (head.startsWith('%PDF-') ? ` (v${head.slice(5)})` : '');
-    clearLog();
-    log(`Loaded "${file.name}" (${pdfBytes.length} bytes).`, 'ok');
-    enableActions(true);
-    els.matchPanel.style.display = 'none';
-    setStatus('');
-  };
-  fr.onerror = () => log('Failed to read file.', 'err');
-  fr.readAsArrayBuffer(file);
+function addFiles(fileList){
+  const arr = [...fileList].filter(f => /pdf$/i.test(f.name) || f.type === 'application/pdf');
+  if(!arr.length){ log('No PDF files in that selection.', 'err'); return; }
+  let pending = arr.length;
+  arr.forEach(file => {
+    const fr = new FileReader();
+    fr.onload = () => {
+      const bytes = new Uint8Array(fr.result);
+      const ok = bytesToStr(bytes.subarray(0,5)) === '%PDF-';
+      files.push({ id: nextId++, name: file.name, bytes, status: ok?'idle':'warn', note: ok?'ready':'not %PDF?', edited:null });
+      log(`Loaded "${file.name}" (${bytes.length} bytes).`, ok?'ok':null);
+      if(--pending === 0) renderFiles();
+      else renderFiles();
+    };
+    fr.onerror = () => { log(`Failed to read "${file.name}".`, 'err'); if(--pending===0) renderFiles(); };
+    fr.readAsArrayBuffer(file);
+  });
+  els.matchPanel.style.display = 'none';
+  setStatus('');
 }
 
 els.drop.addEventListener('click', () => els.file.click());
-els.file.addEventListener('change', e => loadFile(e.target.files[0]));
+els.file.addEventListener('change', e => { addFiles(e.target.files); els.file.value=''; });
 ['dragenter','dragover'].forEach(ev => els.drop.addEventListener(ev, e => { e.preventDefault(); els.drop.classList.add('drag'); }));
 ['dragleave','drop'].forEach(ev => els.drop.addEventListener(ev, e => { e.preventDefault(); els.drop.classList.remove('drag'); }));
-els.drop.addEventListener('drop', e => { if(e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+els.drop.addEventListener('drop', e => { if(e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+
+els.fileList.addEventListener('click', e => {
+  const rm = e.target.getAttribute('data-rm');
+  const dl = e.target.getAttribute('data-dl');
+  if(rm){ files = files.filter(f => f.id !== +rm); renderFiles(); }
+  else if(dl){ const f = files.find(x => x.id === +dl); if(f && f.edited) downloadBytes(f.edited, editedName(f.name), 'application/pdf'); }
+});
+els.clearBtn.addEventListener('click', () => { files = []; renderFiles(); els.matchPanel.style.display='none'; setStatus(''); clearLog(); });
 
 function currentOpts(){ return { caseSensitive: els.cs.checked, wholeWord: els.ww.checked }; }
 
-function renderMatches(samples, totalMatches, find){
-  els.matchPanel.style.display = 'block';
-  if(!totalMatches){
-    els.matches.innerHTML = '<div class="empty">No matches found in the editable text layer. The text may be vector outlines or use a font encoding this tool can\'t read — try "Show all editable text" to see what\'s actually editable.</div>';
-    return;
-  }
-  let rows = samples.map(s =>
-    `<tr><td><code>…${escapeHtml(s.before)}<span class="hi">${escapeHtml(s.hit)}</span>${escapeHtml(s.after)}…</code></td></tr>`
-  ).join('');
-  els.matches.innerHTML =
-    `<table><thead><tr><th>Context (${totalMatches} match${totalMatches>1?'es':''} for “${escapeHtml(find)}”)</th></tr></thead><tbody>${rows}</tbody></table>`;
-}
 function escapeHtml(s){ return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function editedName(name){ return name.replace(/\.pdf$/i,'') + '-edited.pdf'; }
 
+/* ---------- SCAN ---------- */
 els.scanBtn.addEventListener('click', async () => {
   const find = els.find.value;
   if(!find){ log('Enter the text to find.', 'err'); return; }
+  if(!files.length){ return; }
   enableActions(false); setStatus('Scanning…');
+  const opts = currentOpts();
+  let grandTotal = 0, filesWith = 0;
+  const allSamples = []; const perFile = [];
   try{
-    const r = await runOverContentStreams('scan', find, els.repl.value, currentOpts());
-    log(`Scanned ${r.contentStreams} content stream(s) of ${r.streamsSeen} total streams.`);
-    if(r.skippedPredictor) log(`${r.skippedPredictor} predictor-encoded stream(s) skipped.`);
-    if(r.inflateFail) log(`${r.inflateFail} stream(s) could not be inflated.`);
-    renderMatches(r.samples, r.totalMatches, find);
-    if(r.totalMatches){
-      setStatus(`<span class="pill good">${r.totalMatches} match(es)</span> Review below, then click “Replace &amp; download PDF”.`);
-      log(`Found ${r.totalMatches} match(es) for "${find}".`, 'ok');
+    for(const f of files){
+      const r = await runOverContentStreams(f.bytes, 'scan', find, '', opts);
+      perFile.push({ name:f.name, count:r.totalMatches });
+      if(r.totalMatches){
+        grandTotal += r.totalMatches; filesWith++;
+        setFileStatus(f, 'ok', `${r.totalMatches} match${r.totalMatches>1?'es':''}`);
+        for(const s of r.samples){ if(allSamples.length < 80) allSamples.push({file:f.name, ...s}); }
+      } else {
+        setFileStatus(f, 'warn', 'no match');
+      }
+    }
+    renderFiles();
+    renderScanMatches(perFile, allSamples, grandTotal, find);
+    if(grandTotal){
+      setStatus(`<span class="pill good">${grandTotal} match(es)</span> in ${filesWith} of ${files.length} file(s). Review below, then “Replace &amp; download all”.`);
+      log(`Found ${grandTotal} match(es) across ${filesWith} file(s).`, 'ok');
     } else {
-      setStatus('<span class="pill warn">No matches</span> Nothing to replace in the editable text layer.');
-      log(`No matches for "${find}".`, 'err');
+      setStatus('<span class="pill warn">No matches</span> in any file.');
+      log(`No matches for "${find}" in any file.`, 'err');
     }
   }catch(e){ log('Scan error: ' + e.message, 'err'); }
   enableActions(true);
 });
 
+function renderScanMatches(perFile, samples, total, find){
+  els.matchPanel.style.display = 'block';
+  els.matchTitle.textContent = 'Matches';
+  if(!total){
+    els.matches.innerHTML = '<div class="empty">No matches found in the editable text layer of any file. The text may be vector outlines or use a font encoding this tool can\'t read — try "Show editable text".</div>';
+    return;
+  }
+  const summary = perFile.map(p =>
+    `<tr><td style="white-space:nowrap">${escapeHtml(p.name)}</td><td>${p.count ? `<span class="pill good">${p.count}</span>` : '<span class="pill warn">0</span>'}</td></tr>`
+  ).join('');
+  const ctx = samples.map(s =>
+    `<tr><td style="white-space:nowrap;color:var(--muted)">${escapeHtml(s.file)}</td><td><code>…${escapeHtml(s.before)}<span class="hi">${escapeHtml(s.hit)}</span>${escapeHtml(s.after)}…</code></td></tr>`
+  ).join('');
+  els.matches.innerHTML =
+    `<table><thead><tr><th>File</th><th>Matches for “${escapeHtml(find)}”</th></tr></thead><tbody>${summary}</tbody></table>` +
+    `<table style="margin-top:10px"><thead><tr><th>File</th><th>Context (showing up to 80)</th></tr></thead><tbody>${ctx}</tbody></table>`;
+}
+
+/* ---------- APPLY ---------- */
 els.applyBtn.addEventListener('click', async () => {
   const find = els.find.value;
   if(!find){ log('Enter the text to find.', 'err'); return; }
+  if(!files.length){ return; }
   const replace = els.repl.value;
+  const opts = currentOpts();
   enableActions(false); setStatus('Replacing…');
+  let editedFiles = 0, grandTotal = 0;
   try{
-    const r = await runOverContentStreams('apply', find, replace, currentOpts());
-    if(!r.totalMatches){
-      setStatus('<span class="pill warn">No matches</span> Nothing was changed.');
-      log(`No matches for "${find}" — file not modified.`, 'err');
+    for(const f of files){
+      f.edited = null;
+      const r = await runOverContentStreams(f.bytes, 'apply', find, replace, opts);
+      if(!r.totalMatches){
+        setFileStatus(f, 'warn', 'no match');
+        log(`"${f.name}": no matches — unchanged.`);
+        continue;
+      }
+      const out = buildIncrementalUpdate(f.bytes, r.modified);
+      f.edited = out;
+      editedFiles++; grandTotal += r.totalMatches;
+      setFileStatus(f, 'ok', `${r.totalMatches} replaced`);
+      log(`"${f.name}": replaced ${r.totalMatches} occurrence(s) (+${out.length - f.bytes.length} bytes).`, 'ok');
+    }
+    renderFiles();
+    if(!editedFiles){
+      setStatus('<span class="pill warn">No matches</span> Nothing was changed in any file.');
+      log(`No matches for "${find}" — nothing downloaded.`, 'err');
       enableActions(true); return;
     }
-    log(`Replacing ${r.totalMatches} occurrence(s) across ${r.modified.length} stream(s)…`);
-    const outBytes = await buildIncrementalUpdate(r.modified);
-    downloadPdf(outBytes);
-    setStatus(`<span class="pill good">Done</span> Replaced ${r.totalMatches} occurrence(s). Download started.`);
-    log(`Wrote incremental update (+${outBytes.length - pdfBytes.length} bytes). Fonts & layout preserved.`, 'ok');
+    // package downloads
+    const edited = files.filter(f => f.edited);
+    if(edited.length === 1){
+      downloadBytes(edited[0].edited, editedName(edited[0].name), 'application/pdf');
+      setStatus(`<span class="pill good">Done</span> Replaced ${grandTotal} occurrence(s) in 1 file. Download started.`);
+    } else {
+      const zip = makeZip(edited.map(f => ({ name: editedName(f.name), bytes: f.edited })));
+      downloadBytes(zip, 'edited-pdfs.zip', 'application/zip');
+      setStatus(`<span class="pill good">Done</span> Replaced ${grandTotal} occurrence(s) across ${editedFiles} file(s). Downloaded as <strong>edited-pdfs.zip</strong>.`);
+    }
+    log(`Finished: ${editedFiles} file(s) edited, ${grandTotal} total replacement(s). Fonts &amp; layout preserved.`, 'ok');
   }catch(e){ log('Replace error: ' + e.message, 'err'); setStatus('<span class="pill bad">Error</span> ' + escapeHtml(e.message)); }
   enableActions(true);
 });
 
+/* ---------- EXTRACT (first file, or all) ---------- */
 els.extractBtn.addEventListener('click', async () => {
+  if(!files.length){ return; }
   enableActions(false); setStatus('Extracting text…');
   try{
-    const r = await runOverContentStreams('extract');
     els.matchPanel.style.display = 'block';
-    if(!r.extracted.length){
-      els.matches.innerHTML = '<div class="empty">No editable text found. This PDF\'s text is most likely vector outlines (converted to curves on export) — it cannot be edited as text.</div>';
-      setStatus('<span class="pill warn">No editable text</span>');
-    } else {
-      const rows = r.extracted.map(e =>
-        `<tr><td style="white-space:nowrap;color:var(--muted)">obj ${e.num}</td><td><code>${escapeHtml(e.text.slice(0,400))}${e.text.length>400?'…':''}</code></td></tr>`
-      ).join('');
-      els.matches.innerHTML = `<table><thead><tr><th>Object</th><th>Editable text (${r.extracted.length} stream(s))</th></tr></thead><tbody>${rows}</tbody></table>`;
-      setStatus(`<span class="pill good">${r.extracted.length} text stream(s)</span> This is the text you can find &amp; replace.`);
+    els.matchTitle.textContent = 'Editable text';
+    let html = ''; let anyText = false;
+    for(const f of files){
+      const r = await runOverContentStreams(f.bytes, 'extract');
+      if(r.extracted.length){
+        anyText = true;
+        const joined = r.extracted.map(e => e.text).join('  ·  ');
+        html += `<table style="margin-bottom:10px"><thead><tr><th>${escapeHtml(f.name)} — editable text</th></tr></thead><tbody><tr><td><code>${escapeHtml(joined.slice(0,1200))}${joined.length>1200?'…':''}</code></td></tr></tbody></table>`;
+      } else {
+        html += `<table style="margin-bottom:10px"><thead><tr><th>${escapeHtml(f.name)}</th></tr></thead><tbody><tr><td class="empty">No editable text — likely vector outlines, cannot be edited as text.</td></tr></tbody></table>`;
+      }
     }
-    log(`Extracted text from ${r.extracted.length} content stream(s).`, 'ok');
+    els.matches.innerHTML = html;
+    setStatus(anyText ? '<span class="pill good">Text found</span> This is what you can find &amp; replace.' : '<span class="pill warn">No editable text in any file</span>');
+    log('Extracted editable text.', 'ok');
   }catch(e){ log('Extract error: ' + e.message, 'err'); }
   enableActions(true);
 });
 
-function downloadPdf(bytes){
-  const base = pdfName.replace(/\.pdf$/i,'');
-  const blob = new Blob([bytes], {type:'application/pdf'});
+/* ---------- download helper ---------- */
+function downloadBytes(bytes, filename, mime){
+  const blob = new Blob([bytes], {type: mime});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = base + '-edited.pdf';
+  a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url), 4000);
 }
