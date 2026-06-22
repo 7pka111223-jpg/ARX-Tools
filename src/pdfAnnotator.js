@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, rgb, PDFName, PDFArray, PDFHexString } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, PDFName, PDFArray, PDFHexString, degrees } from 'pdf-lib';
 
 // Error / warning palette, as both a pdf-lib color (for drawn shapes/text)
 // and a raw [r,g,b] array (for the annotation object's /C colour entry).
@@ -87,17 +87,68 @@ function annotateAtBox(doc, page, font, issue) {
   addStickyNote(doc, page, [noteX, bottom, noteX + 16, bottom + 16], commentText(issue), style.rgb);
 }
 
+// pdf-lib's page.getRotation() returns the raw stored /Rotate value
+// unnormalized (it can be negative or >= 360, unlike pdf.js's getViewport,
+// which always normalizes); collapse it to one of the four valid values.
+function normalizeRotation(angle) {
+  const r = ((angle % 360) + 360) % 360;
+  return r === 90 || r === 180 || r === 270 ? r : 0;
+}
+
+// Converts a point from the page's VISUAL (as-displayed) space - x right,
+// y down, origin top-left, the same convention pdfExtractor.js's item
+// x/y use - into pdf-lib's RAW drawing space (x right, y up, origin
+// bottom-left), given the raw page size and the page's own clockwise
+// /Rotate value. There is no on-page anchor to inherit correctness from
+// here (unlike annotateAtBox, see below), so the four cases below are
+// needed; they're derived from pdf.js's PageViewport transform (the same
+// rotateA/B/C/D table pdfExtractor.js relies on for the reverse direction).
+function visualToRaw(vx, vy, rawWidth, rawHeight, rotation) {
+  switch (rotation) {
+    case 90: return { x: vy, y: vx };
+    case 180: return { x: rawWidth - vx, y: vy };
+    case 270: return { x: rawWidth - vy, y: rawHeight - vx };
+    default: return { x: vx, y: rawHeight - vy };
+  }
+}
+
+// Same conversion for a rectangle: each corner can map to a different raw
+// corner depending on rotation, so the two transformed points are re-sorted
+// into a normalized [x1,y1,x2,y2] rather than assumed to keep their order.
+function visualRectToRaw(vx1, vy1, vx2, vy2, rawWidth, rawHeight, rotation) {
+  const p1 = visualToRaw(vx1, vy1, rawWidth, rawHeight, rotation);
+  const p2 = visualToRaw(vx2, vy2, rawWidth, rawHeight, rotation);
+  return [Math.min(p1.x, p2.x), Math.min(p1.y, p2.y), Math.max(p1.x, p2.x), Math.max(p1.y, p2.y)];
+}
+
 // Fallback placement for issues with no on-page location (e.g. a required
 // field that is entirely missing): stack the messages down the page's
-// top-left corner so they're still recorded as visible comments.
+// visual top-left corner so they're still recorded as visible comments.
+// Unlike annotateAtBox, this has no real text to anchor to and inherit
+// rotation-consistency from, so the visual position is converted to raw
+// space explicitly, and the text itself is drawn with a matching
+// compensating rotation so it still reads upright once the PDF viewer
+// applies the page's own rotation on top.
 function annotateStacked(doc, page, font, issue, slot) {
   const style = styleFor(issue.severity);
   const margin = 12;
   const lineHeight = 13;
-  const y = page.getHeight() - margin - slot * lineHeight;
+  const rawWidth = page.getWidth();
+  const rawHeight = page.getHeight();
+  const rotation = normalizeRotation(page.getRotation().angle);
 
-  page.drawText(drawable(commentText(issue)), { x: margin + 16, y, size: 8, font, color: style.color });
-  addStickyNote(doc, page, [margin, y - 2, margin + 14, y + 12], commentText(issue), style.rgb);
+  const vx = margin + 16;
+  const vy = margin + slot * lineHeight;
+  const { x, y } = visualToRaw(vx, vy, rawWidth, rawHeight, rotation);
+
+  page.drawText(drawable(commentText(issue)), { x, y, size: 8, font, color: style.color, rotate: degrees(rotation) });
+
+  // The icon sits beside the text line: a couple of px below its baseline
+  // to comfortably above it. Visual y grows downward, the opposite of the
+  // raw axis the old fixed formula offset directly, so the offsets'
+  // direction (which one subtracts, which adds) flips accordingly.
+  const rect = visualRectToRaw(margin, vy - 12, margin + 14, vy + 2, rawWidth, rawHeight, rotation);
+  addStickyNote(doc, page, rect, commentText(issue), style.rgb);
 }
 
 function pageIndexFor(issue, pageCount) {

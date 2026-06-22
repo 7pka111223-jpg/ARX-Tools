@@ -32,16 +32,32 @@ export async function extractPdfText(pdfBytes) {
     const pages = [];
     for (let i = 1; i <= doc.numPages; i++) {
       const page = await doc.getPage(i);
-      const viewport = page.getViewport({ scale: 1 });
+      // getTextContent() reports each item's transform in the page's RAW,
+      // unrotated user space - the same space pdf-lib draws in. A viewport
+      // built with the page's own rotation (the default) instead reports
+      // width/height swapped for a 90/270 page, e.g. landscape-by-rotation
+      // drawings. Flipping y with that rotated height while x/y themselves
+      // are still unrotated put every annotation in the wrong place on any
+      // rotated (landscape) page. A second viewport with rotation forced to
+      // 0 keeps width/height/x/y all in that same raw space, consistently.
+      const displayViewport = page.getViewport({ scale: 1 });
+      const rawViewport = page.getViewport({ scale: 1, rotation: 0 });
+      const rotation = displayViewport.rotation;
+      const orientation = displayViewport.width > displayViewport.height ? 'landscape' : 'portrait';
+
       const content = await page.getTextContent();
-      const items = content.items.map((it) => ({
-        text: it.str,
-        x: it.transform[4],
-        y: viewport.height - it.transform[5],
-        width: it.width,
-        height: it.height,
-      }));
-      pages.push({ pageNumber: i, width: viewport.width, height: viewport.height, items });
+      const items = content.items.map((it) => {
+        const [x, y] = rawViewport.convertToViewportPoint(it.transform[4], it.transform[5]);
+        return { text: it.str, x, y, width: it.width, height: it.height };
+      });
+      pages.push({
+        pageNumber: i,
+        width: rawViewport.width,
+        height: rawViewport.height,
+        rotation,
+        orientation,
+        items,
+      });
     }
     return { pages };
   } catch (err) {
