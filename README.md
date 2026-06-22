@@ -13,5 +13,5 @@ Checks CAD-exported PDF engineering drawings against an editable rules file
 
 Open `dist/drawing-checker.html` in a browser. No internet connection or
 installation is required — it is a single self-contained file. Drag PDF
-files onto it, edit the rules from the dropdown if needed, and export a
-report.
+files onto it, add/edit/delete rules in the Rules list if needed, and
+export a report.
