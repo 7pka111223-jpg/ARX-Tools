@@ -7,7 +7,7 @@ Checks CAD-exported PDF engineering drawings against an editable rules file
 
     npm install
     npm test          # run the unit test suite
-    npm run build      # produce dist/drawing-checker.html
+    npm run build      # produce dist/drawing-checker.html and dist/arx-tools.html
 
 ## Usage
 
@@ -33,3 +33,18 @@ are preserved** — only the characters change. It works on PDFs with a real
 text layer (most CAD exports); it cannot edit text that was exported as
 vector outlines, which the built-in "Show all editable text" button helps
 you confirm.
+
+## Combined app (both tools in one file)
+
+`npm run build` also produces **`dist/arx-tools.html`** — a single
+self-contained file that contains both tools in two tabs:
+
+* **Drawing Checker** — the title-block / spelling / formatting reviewer.
+* **PDF Text Editor** — the batch find &amp; replace tool.
+
+Each tool runs in its own isolated frame, so they never interfere. A shared
+**"Choose download folder…"** control at the top lets you pick where edited
+and exported files are written (using the browser's File System Access API in
+Chrome/Edge); when no folder is chosen, files go to the browser's normal
+Downloads folder. Open `dist/arx-tools.html` directly in a browser — no
+install or internet connection required.

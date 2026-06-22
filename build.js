@@ -43,3 +43,26 @@ const html = template
 
 writeFileSync('dist/drawing-checker.html', html);
 console.log('Built dist/drawing-checker.html');
+
+// ---- Combined "ARX Tools" file: Drawing Checker + PDF Text Editor in tabs.
+// Each tool is embedded unchanged and fully isolated inside a srcdoc iframe,
+// so their CSS and JS never collide. The shell adds the tab bar and a shared
+// "choose download folder" option both tools save through.
+//
+// embed() turns an HTML document into a JS string literal. JSON.stringify does
+// not escape "</script", so any literal "</script" inside the embedded HTML
+// would prematurely close the shell's <script>. Rewriting it to "<\/script"
+// is inert in HTML parsing yet evaluates back to "</script" in the string.
+function embed(htmlText) {
+  return JSON.stringify(htmlText).replace(/<\/script/gi, '<\\/script');
+}
+
+const checkerHtml = readFileSync('dist/drawing-checker.html', 'utf8');
+const editorHtml = readFileSync('pdf-text-editor.html', 'utf8');
+const arxTemplate = readFileSync('arx.template.html', 'utf8');
+const arxHtml = arxTemplate
+  .replace('/*__CHECKER_HTML__*/', () => embed(checkerHtml))
+  .replace('/*__EDITOR_HTML__*/', () => embed(editorHtml));
+
+writeFileSync('dist/arx-tools.html', arxHtml);
+console.log('Built dist/arx-tools.html');

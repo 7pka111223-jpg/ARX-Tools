@@ -680,7 +680,7 @@ els.fileList.addEventListener('click', e => {
   const rm = e.target.getAttribute('data-rm');
   const dl = e.target.getAttribute('data-dl');
   if(rm){ files = files.filter(f => f.id !== +rm); renderFiles(); }
-  else if(dl){ const f = files.find(x => x.id === +dl); if(f && f.edited) downloadBytes(f.edited, editedName(f.name), 'application/pdf'); }
+  else if(dl){ const f = files.find(x => x.id === +dl); if(f && f.edited) outSave(editedName(f.name), f.edited, 'application/pdf'); }
 });
 els.clearBtn.addEventListener('click', () => { files = []; renderFiles(); els.matchPanel.style.display='none'; setStatus(''); clearLog(); });
 
@@ -771,14 +771,18 @@ els.applyBtn.addEventListener('click', async () => {
       log(`No matches for "${find}" — nothing downloaded.`, 'err');
       enableActions(true); return;
     }
-    // package downloads
+    // package / save outputs
     const edited = files.filter(f => f.edited);
-    if(edited.length === 1){
-      downloadBytes(edited[0].edited, editedName(edited[0].name), 'application/pdf');
+    if(saveDirActive()){
+      // a download folder was chosen in the host: write each PDF straight into it
+      for(const f of edited) await outSave(editedName(f.name), f.edited, 'application/pdf');
+      setStatus(`<span class="pill good">Done</span> Replaced ${grandTotal} occurrence(s); saved ${editedFiles} file(s) to your chosen folder.`);
+    } else if(edited.length === 1){
+      await outSave(editedName(edited[0].name), edited[0].edited, 'application/pdf');
       setStatus(`<span class="pill good">Done</span> Replaced ${grandTotal} occurrence(s) in 1 file. Download started.`);
     } else {
       const zip = makeZip(edited.map(f => ({ name: editedName(f.name), bytes: f.edited })));
-      downloadBytes(zip, 'edited-pdfs.zip', 'application/zip');
+      await outSave('edited-pdfs.zip', zip, 'application/zip');
       setStatus(`<span class="pill good">Done</span> Replaced ${grandTotal} occurrence(s) across ${editedFiles} file(s). Downloaded as <strong>edited-pdfs.zip</strong>.`);
     }
     log(`Finished: ${editedFiles} file(s) edited, ${grandTotal} total replacement(s). Fonts &amp; layout preserved.`, 'ok');
@@ -810,6 +814,22 @@ els.extractBtn.addEventListener('click', async () => {
   }catch(e){ log('Extract error: ' + e.message, 'err'); }
   enableActions(true);
 });
+
+/* ---------- saving ----------
+   When embedded in the ARX Tools shell (an iframe), route saves through the
+   host so the user's chosen download folder is honored; otherwise fall back
+   to a normal browser download. Works standalone too. */
+function inHost(){
+  try{ return window.parent && window.parent !== window && typeof window.parent.__saveOutputFile === 'function'; }
+  catch(e){ return false; }
+}
+function saveDirActive(){
+  try{ return inHost() && !!window.parent.__saveDir; }catch(e){ return false; }
+}
+async function outSave(name, bytes, mime){
+  if(inHost()) return window.parent.__saveOutputFile(name, bytes, mime);
+  return downloadBytes(bytes, name, mime);
+}
 
 /* ---------- download helper ---------- */
 function downloadBytes(bytes, filename, mime){

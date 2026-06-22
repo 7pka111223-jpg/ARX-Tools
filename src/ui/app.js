@@ -286,6 +286,14 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
 }
 
 function downloadFile(name, content, mime) {
+  // When embedded in the ARX Tools shell, route through the host so the
+  // user's chosen download folder (File System Access API) is honored.
+  try {
+    if (window.parent && window.parent !== window && typeof window.parent.__saveOutputFile === 'function') {
+      window.parent.__saveOutputFile(name, content, mime);
+      return;
+    }
+  } catch (e) { /* cross-origin or unavailable: fall back to a normal download */ }
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
