@@ -25,6 +25,13 @@ appears on and suggested corrections, then export the findings as an HTML or
 CSV spelling report. The custom dictionary and ignore list from the rules
 file apply here too.
 
+Some flagged words are really names or codes, not mistakes. Each row has an
+**Add to dictionary** button that adds that word to the custom dictionary so
+it won't be flagged on the next check. The custom dictionary lives at the
+bottom of the card: **Export dictionary** saves it as a plain-text file (one
+word per line) you can keep or edit, and **Import dictionary** merges a saved
+list back in (duplicates are ignored).
+
 ### Rules check
 
 The **Rules check** section runs a dedicated pass over just the title-block,

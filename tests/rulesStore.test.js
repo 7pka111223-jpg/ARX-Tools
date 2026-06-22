@@ -70,6 +70,37 @@ test('setProjectFieldValue and dictionary word management', () => {
   assert.ok(!store.getRules().spelling.customDictionary.includes('headworks'));
 });
 
+test('importDictionary merges new words and reports how many were added', () => {
+  const store = createRulesStore();
+  store.addCustomDictionaryWord('headworks');
+  const added = store.importDictionary('headworks\nclarifier\nweir\nweir');
+  // "headworks" already present and the duplicate "weir" only counts once.
+  assert.equal(added, 2);
+  const dict = store.getRules().spelling.customDictionary;
+  assert.ok(dict.includes('clarifier'));
+  assert.ok(dict.includes('weir'));
+  assert.equal(dict.filter((w) => w === 'weir').length, 1);
+});
+
+test('importDictionary accepts whitespace- or newline-separated words and ignores blanks', () => {
+  const store = createRulesStore();
+  const added = store.importDictionary('  alpha   beta \n\n  gamma  ');
+  assert.equal(added, 3);
+  assert.deepEqual(store.getRules().spelling.customDictionary, ['alpha', 'beta', 'gamma']);
+});
+
+test('exportDictionary returns one word per line and round-trips through importDictionary', () => {
+  const store = createRulesStore();
+  store.importDictionary('alpha beta gamma');
+  const text = store.exportDictionary();
+  assert.equal(text, 'alpha\nbeta\ngamma');
+
+  const store2 = createRulesStore();
+  const added = store2.importDictionary(text);
+  assert.equal(added, 3);
+  assert.deepEqual(store2.getRules().spelling.customDictionary, ['alpha', 'beta', 'gamma']);
+});
+
 test('addRule rejects an invalid severity value', () => {
   const store = createRulesStore();
   assert.throws(() => store.addRule({ id: 'badSeverity', category: 'formatting', label: 'x', find: '\\d', valid: '^x$', message: 'm', severity: 'critical' }));

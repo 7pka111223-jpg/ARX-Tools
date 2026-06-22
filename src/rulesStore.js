@@ -89,6 +89,27 @@ export function createRulesStore(initial = DEFAULT_RULES) {
       state.spelling.customDictionary = state.spelling.customDictionary.filter((w) => w !== word);
     },
 
+    // Merges whitespace/newline-separated words from a dictionary file into the
+    // custom dictionary, skipping ones already present. Returns the number of
+    // genuinely new words added.
+    importDictionary(text) {
+      const words = String(text).split(/\s+/).map((w) => w.trim()).filter(Boolean);
+      let added = 0;
+      for (const w of words) {
+        if (!state.spelling.customDictionary.includes(w)) {
+          state.spelling.customDictionary.push(w);
+          added += 1;
+        }
+      }
+      return added;
+    },
+
+    // Serializes the custom dictionary as one word per line, for export to a
+    // plain-text file the user can keep, edit, or re-import later.
+    exportDictionary() {
+      return state.spelling.customDictionary.join('\n');
+    },
+
     importRules(json) {
       const parsed = typeof json === 'string' ? JSON.parse(json) : json;
       validateRulesShape(parsed);

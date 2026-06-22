@@ -265,6 +265,57 @@ test('the spelling check warns and does nothing when no files have been added', 
   assert.equal(root.querySelectorAll('#spellTable tbody tr').length, 0);
 });
 
+function spellingWorker() {
+  return {
+    postMessage(msg) {
+      const result = msg.mode === 'spelling'
+        ? { fileName: msg.fileName, error: null, misspellings: [{ word: 'clarifeir', pages: [1], suggestions: ['clarifier'] }] }
+        : { fileName: msg.fileName, pass: true, issues: [], counts: { error: 0, warn: 0 } };
+      this.onmessage({ data: { jobId: msg.jobId, result } });
+    },
+    terminate() {},
+  };
+}
+
+test('clicking "Add to dictionary" on a misspelling adds the word and marks the button added', async () => {
+  setupDom();
+  const root = document.getElementById('app');
+  const app = initApp(root, { createWorker: () => spellingWorker() });
+  const file = { name: 'a.pdf', arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) };
+
+  await app.handleFiles([file]);
+  await app.handleSpellCheck();
+
+  const btn = root.querySelector('.spell-add-btn');
+  assert.ok(btn, 'expected an Add to dictionary button');
+  btn.dispatchEvent(new window.Event('click', { bubbles: true }));
+
+  assert.ok(app.store.getRules().spelling.customDictionary.includes('clarifeir'));
+  assert.equal(btn.disabled, true);
+  assert.match(btn.textContent, /Added/);
+});
+
+test('Export dictionary downloads a text file and reports the word count', async () => {
+  setupDom();
+  global.URL.createObjectURL = () => 'blob:stub';
+  global.URL.revokeObjectURL = () => {};
+  const downloaded = [];
+  global.document.createElement = ((orig) => (tag) => {
+    const el = orig.call(global.document, tag);
+    if (tag === 'a') el.click = () => downloaded.push(el.download);
+    return el;
+  })(global.document.createElement);
+
+  const root = document.getElementById('app');
+  const app = initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
+  app.store.addCustomDictionaryWord('headworks');
+
+  root.querySelector('#exportDictionary').dispatchEvent(new window.Event('click', { bubbles: true }));
+
+  assert.deepEqual(downloaded, ['custom-dictionary.txt']);
+  assert.match(root.querySelector('#dictStatus').textContent, /Exported 1 dictionary word/);
+});
+
 test('handleFiles ignores a stray message with a mismatched jobId across multiple files', async () => {
   setupDom();
   const root = document.getElementById('app');

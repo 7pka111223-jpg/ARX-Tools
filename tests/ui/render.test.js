@@ -70,3 +70,16 @@ test('renderSpellingRows escapes html-unsafe content', () => {
   assert.ok(!html.includes('<script>'));
   assert.ok(html.includes('&lt;script&gt;'));
 });
+
+test('renderSpellingRows adds an "Add to dictionary" button carrying the word', () => {
+  const html = renderSpellingRows({ fileName: 'a.pdf', error: null, misspellings: [{ word: 'clarifeir', pages: [1], suggestions: ['clarifier'] }] });
+  assert.ok(html.includes('spell-add-btn'));
+  assert.ok(html.includes('data-add-word="clarifeir"'));
+  assert.ok(html.includes('Add to dictionary'));
+});
+
+test('renderSpellingRows escapes the word inside the add-to-dictionary data attribute', () => {
+  const html = renderSpellingRows({ fileName: 'a.pdf', error: null, misspellings: [{ word: '"><img>', pages: [1], suggestions: [] }] });
+  assert.ok(!html.includes('data-add-word=""><img>"'));
+  assert.ok(html.includes('&quot;&gt;&lt;img&gt;'));
+});

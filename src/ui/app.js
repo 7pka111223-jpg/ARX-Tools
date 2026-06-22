@@ -49,7 +49,7 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
       <button id="checkSpelling" class="btn btn-primary">Check spelling</button>
       <progress id="spellProgress" value="0" max="1"></progress>
       <table id="spellTable">
-        <thead><tr><th>File</th><th>Misspelling</th><th>Page(s)</th><th>Suggestions</th></tr></thead>
+        <thead><tr><th>File</th><th>Misspelling</th><th>Page(s)</th><th>Suggestions</th><th>Action</th></tr></thead>
         <tbody></tbody>
       </table>
       <div class="toolbar">
@@ -59,6 +59,16 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
       </div>
       <progress id="annotateSpellProgress" value="0" max="1"></progress>
       <p id="annotateSpellStatus" class="card__hint"></p>
+
+      <hr class="divider">
+      <div class="rules-toolbar">
+        <div class="field rules-toolbar__import">
+          <label for="importDictionary">Import dictionary (.txt)</label>
+          <input type="file" id="importDictionary" accept=".txt,.text,.csv">
+        </div>
+        <button id="exportDictionary" class="btn">Export dictionary</button>
+      </div>
+      <p id="dictStatus" class="card__hint">Words added with “Add to dictionary” are treated as correctly spelled. Export to keep them, or import a saved list.</p>
     </section>
 
     <section class="card">
@@ -213,6 +223,7 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
   const checkSpellingBtn = root.querySelector('#checkSpelling');
   const spellProgress = root.querySelector('#spellProgress');
   const spellBody = root.querySelector('#spellTable tbody');
+  const dictStatus = root.querySelector('#dictStatus');
   const checkRulesBtn = root.querySelector('#checkRules');
   const rulesProgress = root.querySelector('#rulesProgress');
   const rulesBody = root.querySelector('#rulesTable tbody');
@@ -594,6 +605,38 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
     downloadFile('drawing-check-report.csv', generateCsv(aggregateResults(drawingResults)), 'text/csv');
   });
   checkSpellingBtn.addEventListener('click', () => handleSpellCheck());
+
+  // "Add to dictionary" on a misspelling row: add the word to the custom
+  // dictionary and mark every matching button (the same word may be listed
+  // for several files) as added. The next spelling check then skips the word.
+  spellBody.addEventListener('click', (e) => {
+    const btn = e.target.closest('.spell-add-btn');
+    if (!btn) return;
+    const word = btn.dataset.addWord;
+    store.addCustomDictionaryWord(word);
+    spellBody.querySelectorAll('.spell-add-btn').forEach((b) => {
+      if (b.dataset.addWord === word) {
+        b.textContent = 'Added ✓';
+        b.disabled = true;
+      }
+    });
+    dictStatus.textContent = `“${word}” added to the dictionary — it won't be flagged on the next spelling check.`;
+  });
+
+  root.querySelector('#exportDictionary').addEventListener('click', () => {
+    const text = store.exportDictionary();
+    downloadFile('custom-dictionary.txt', text, 'text/plain');
+    const count = text ? text.split('\n').filter(Boolean).length : 0;
+    dictStatus.textContent = `Exported ${count} dictionary word(s).`;
+  });
+
+  root.querySelector('#importDictionary').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const added = store.importDictionary(await file.text());
+    dictStatus.textContent = `Imported ${added} new word(s) into the dictionary.`;
+    e.target.value = ''; // allow re-importing the same file
+  });
   root.querySelector('#exportSpellHtml').addEventListener('click', () => {
     downloadFile('spelling-report.html', generateSpellingHtmlReport(spellingResults), 'text/html');
   });

@@ -35,15 +35,19 @@ const MAX_SUGGESTIONS = 5;
 
 export function renderSpellingRows(result) {
   if (result.error) {
-    return `<tr><td>${escapeHtml(result.fileName)}</td><td class="fail" colspan="3">${escapeHtml(result.error)}</td></tr>`;
+    return `<tr><td>${escapeHtml(result.fileName)}</td><td class="fail" colspan="4">${escapeHtml(result.error)}</td></tr>`;
   }
   if (result.misspellings.length === 0) {
-    return `<tr><td>${escapeHtml(result.fileName)}</td><td class="pass" colspan="3">No misspellings found</td></tr>`;
+    return `<tr><td>${escapeHtml(result.fileName)}</td><td class="pass" colspan="4">No misspellings found</td></tr>`;
   }
   return result.misspellings
     .map((m) => {
+      const word = escapeHtml(m.word);
       const suggestions = m.suggestions.slice(0, MAX_SUGGESTIONS).join(', ') || '—';
-      return `<tr><td>${escapeHtml(result.fileName)}</td><td>${escapeHtml(m.word)}</td><td>${escapeHtml(m.pages.join(', '))}</td><td>${escapeHtml(suggestions)}</td></tr>`;
+      // The button carries the word so a delegated handler can add it to the
+      // custom dictionary (useful for names/codes that aren't misspellings).
+      const action = `<button type="button" class="btn btn-sm spell-add-btn" data-add-word="${word}">Add to dictionary</button>`;
+      return `<tr><td>${escapeHtml(result.fileName)}</td><td>${word}</td><td>${escapeHtml(m.pages.join(', '))}</td><td>${escapeHtml(suggestions)}</td><td>${action}</td></tr>`;
     })
     .join('');
 }
