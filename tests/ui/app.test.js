@@ -402,3 +402,122 @@ test('clicking a format preset chip fills the Find/Valid fields and updates the 
   assert.equal(root.querySelector('#ruleValid').value, '^\\d{4}-\\d{2}-\\d{2}$');
   assert.ok(root.querySelector('#formatTestMatches').textContent.includes('01/02/2024'));
 });
+
+test('typing an example value and its variable part auto-fills Pattern and shows an explanation', () => {
+  setupDom();
+  const root = document.getElementById('app');
+  initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
+
+  const example = root.querySelector('#patternExample');
+  const variable = root.querySelector('#patternVariable');
+  example.value = 'J2501-JPD-EBH-DG-20103';
+  example.dispatchEvent(new window.Event('input'));
+  variable.value = '20103';
+  variable.dispatchEvent(new window.Event('input'));
+
+  assert.equal(root.querySelector('#rulePattern').value, '^J2501\\-JPD\\-EBH\\-DG\\-\\d{5}$');
+  const resultText = root.querySelector('#patternBuilderResult').textContent;
+  assert.match(resultText, /J2501-JPD-EBH-DG-/);
+  assert.match(resultText, /5 digits/);
+  // The live pattern tester underneath also picks up the auto-filled pattern.
+  assert.match(root.querySelector('#patternTestResult').textContent, /Type a sample value/i);
+});
+
+test('the build-from-example result reflects in the live "try it" tester once a sample value is added', () => {
+  setupDom();
+  const root = document.getElementById('app');
+  initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
+
+  root.querySelector('#patternExample').value = 'J2501-JPD-EBH-DG-20103';
+  root.querySelector('#patternExample').dispatchEvent(new window.Event('input'));
+  root.querySelector('#patternVariable').value = '20103';
+  root.querySelector('#patternVariable').dispatchEvent(new window.Event('input'));
+
+  const value = root.querySelector('#patternTestValue');
+  value.value = 'J2501-JPD-EBH-DG-20104';
+  value.dispatchEvent(new window.Event('input'));
+
+  assert.match(root.querySelector('#patternTestResult').textContent, /Matches/);
+});
+
+test('an empty variable part shows guidance text and leaves Pattern untouched', () => {
+  setupDom();
+  const root = document.getElementById('app');
+  initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
+
+  const example = root.querySelector('#patternExample');
+  example.value = 'J2501-JPD-EBH-DG-20103';
+  example.dispatchEvent(new window.Event('input'));
+
+  assert.equal(root.querySelector('#rulePattern').value, '');
+  assert.match(root.querySelector('#patternBuilderResult').textContent, /changes between drawings/i);
+});
+
+test('a variable part not found in the example shows an error and leaves Pattern untouched', () => {
+  setupDom();
+  const root = document.getElementById('app');
+  initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
+
+  const example = root.querySelector('#patternExample');
+  const variable = root.querySelector('#patternVariable');
+  example.value = 'J2501-JPD-EBH-DG-20103';
+  example.dispatchEvent(new window.Event('input'));
+  variable.value = '99999';
+  variable.dispatchEvent(new window.Event('input'));
+
+  assert.equal(root.querySelector('#rulePattern').value, '');
+  assert.match(root.querySelector('#patternBuilderResult').textContent, /not found/i);
+});
+
+test('a variable part that appears more than once shows a warning alongside the explanation', () => {
+  setupDom();
+  const root = document.getElementById('app');
+  initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
+
+  const example = root.querySelector('#patternExample');
+  const variable = root.querySelector('#patternVariable');
+  example.value = 'AB-001-AB';
+  example.dispatchEvent(new window.Event('input'));
+  variable.value = 'AB';
+  variable.dispatchEvent(new window.Event('input'));
+
+  const resultText = root.querySelector('#patternBuilderResult').textContent;
+  assert.match(resultText, /more than once/);
+  assert.equal(root.querySelector('#rulePattern').value, '^[A-Z]{2}\\-001\\-AB$');
+});
+
+test('clicking a pattern preset chip clears the build-from-example fields and result', () => {
+  setupDom();
+  const root = document.getElementById('app');
+  initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
+
+  const example = root.querySelector('#patternExample');
+  const variable = root.querySelector('#patternVariable');
+  example.value = 'J2501-JPD-EBH-DG-20103';
+  example.dispatchEvent(new window.Event('input'));
+  variable.value = '20103';
+  variable.dispatchEvent(new window.Event('input'));
+
+  const chip = [...root.querySelectorAll('#patternPresets .preset-chip')].find((b) => b.textContent.includes('AB-123)'));
+  chip.dispatchEvent(new window.Event('click', { bubbles: true }));
+
+  assert.equal(example.value, '');
+  assert.equal(variable.value, '');
+  assert.equal(root.querySelector('#patternBuilderResult').innerHTML, '');
+  assert.equal(root.querySelector('#rulePattern').value, '^[A-Z]{2}-\\d{3}$');
+});
+
+test('entering edit mode clears any in-progress build-from-example fields', () => {
+  setupDom();
+  const root = document.getElementById('app');
+  initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
+
+  const example = root.querySelector('#patternExample');
+  example.value = 'leftover value';
+  example.dispatchEvent(new window.Event('input'));
+
+  root.querySelector('.rule-edit-btn[data-rule-id="dwgNo"]').dispatchEvent(new window.Event('click', { bubbles: true }));
+
+  assert.equal(example.value, '');
+  assert.equal(root.querySelector('#patternVariable').value, '');
+});

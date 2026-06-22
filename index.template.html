@@ -423,6 +423,43 @@
     margin: 16px 0;
   }
 
+  /* Build-from-example pattern helper: the primary, simplest way to fill in
+     the Pattern field — type one example value + the part that varies. */
+  .pattern-builder {
+    margin: 0 0 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--color-primary);
+    border-radius: var(--radius-md);
+    background: var(--color-primary-soft);
+  }
+  .pattern-builder__title {
+    margin: 0 0 4px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--color-text);
+  }
+  .pattern-builder__hint {
+    margin: 0 0 10px;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+  }
+  .pattern-builder__result {
+    margin-top: 8px;
+    font-size: 12.5px;
+  }
+  .pattern-builder__result .test-result { display: block; margin-bottom: 4px; }
+  .pattern-builder__regex {
+    display: inline-block;
+    margin-top: 2px;
+    padding: 2px 6px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    word-break: break-all;
+  }
+
   /* Pattern help: preset chips + live "try it" testers in the rule editor */
   .pattern-help {
     margin: -4px 0 12px;

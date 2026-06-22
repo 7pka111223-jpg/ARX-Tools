@@ -2,7 +2,7 @@ import { createRulesStore, DEFAULT_RULES } from '../rulesStore.js';
 import { aggregateResults } from '../resultsModel.js';
 import { generateCsv, generateHtmlReport, generateSpellingCsv, generateSpellingHtmlReport } from '../reportExporter.js';
 import { renderSummaryRow, renderRuleRow, renderSpellingRows } from './render.js';
-import { testPattern, testFormat } from './patternTester.js';
+import { testPattern, testFormat, buildPatternFromExample } from './patternTester.js';
 import { escapeHtml } from '../util.js';
 
 export function initApp(root, { createWorker = () => window.__createWorker() } = {}) {
@@ -113,8 +113,42 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
           <input type="text" id="ruleLabel" placeholder="e.g. DWG NO">
         </div>
 
+        <div class="pattern-builder">
+          <h4 class="pattern-builder__title">Build the pattern from an example</h4>
+          <p class="pattern-builder__hint">Paste one real drawing number below, then say which part of it changes from drawing to drawing. The Pattern field underneath fills in automatically.</p>
+          <div class="field-row">
+            <div class="field">
+              <label for="patternExample">Example value</label>
+              <input type="text" id="patternExample" placeholder="e.g. J2501-JPD-EBH-DG-20103">
+            </div>
+            <div class="field">
+              <label for="patternVariable">Variable part <span class="field-hint">(the part that changes)</span></label>
+              <input type="text" id="patternVariable" placeholder="e.g. 20103">
+            </div>
+          </div>
+          <div id="patternBuilderResult" class="pattern-builder__result"></div>
+        </div>
+
+        <div class="field">
+          <label for="rulePattern">Pattern <span class="field-hint">(titleBlock / revision — exact value must match; filled in automatically above, or write your own)</span></label>
+          <input type="text" id="rulePattern" placeholder="^[A-Z]{2}-\\d{3}$">
+        </div>
+        <div class="pattern-tester">
+          <input type="text" id="patternTestValue" placeholder="Try it: type a sample value, e.g. AB-123">
+          <span id="patternTestResult" class="test-result"></span>
+        </div>
+
         <details class="pattern-help">
-          <summary>Need help writing a pattern?</summary>
+          <summary>Quick patterns, or write your own</summary>
+          <div class="preset-row" id="patternPresets">
+            <button type="button" class="preset-chip" data-pattern="^[A-Z]{2}-\\d{3}$">Drawing no. (AB-123)</button>
+            <button type="button" class="preset-chip" data-pattern="^[A-Z]{2}-\\d{4}$">Drawing no. (AB-1234)</button>
+            <button type="button" class="preset-chip" data-pattern="^[A-Z]$">Revision letter (A)</button>
+            <button type="button" class="preset-chip" data-pattern="^\\d+$">Revision number (1)</button>
+            <button type="button" class="preset-chip" data-pattern="^\\d{4}-\\d{2}-\\d{2}$">ISO date (2024-01-15)</button>
+            <button type="button" class="preset-chip" data-pattern="^[A-Z]{2,3}$">Initials (JS)</button>
+            <button type="button" class="preset-chip" data-pattern=".*">Any non-empty value</button>
+          </div>
           <ul>
             <li><code>^</code> and <code>$</code> anchor the start/end of the value — always include both so e.g. <code>AB-123-EXTRA</code> isn't wrongly accepted as <code>AB-123</code>.</li>
             <li><code>[A-Z]</code> one uppercase letter; <code>[A-Z]{2}</code> exactly two uppercase letters.</li>
@@ -125,24 +159,6 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
             <li><strong>Find / Valid</strong> (formatting): <em>Find</em> locates candidate text anywhere on the drawing (e.g. anything that looks like a date); <em>Valid</em> says which of those finds are acceptable — anything found that doesn't match Valid gets flagged.</li>
           </ul>
         </details>
-
-        <div class="field">
-          <label for="rulePattern">Pattern <span class="field-hint">(titleBlock / revision — exact value must match)</span></label>
-          <input type="text" id="rulePattern" placeholder="^[A-Z]{2}-\\d{3}$">
-        </div>
-        <div class="preset-row" id="patternPresets">
-          <button type="button" class="preset-chip" data-pattern="^[A-Z]{2}-\\d{3}$">Drawing no. (AB-123)</button>
-          <button type="button" class="preset-chip" data-pattern="^[A-Z]{2}-\\d{4}$">Drawing no. (AB-1234)</button>
-          <button type="button" class="preset-chip" data-pattern="^[A-Z]$">Revision letter (A)</button>
-          <button type="button" class="preset-chip" data-pattern="^\\d+$">Revision number (1)</button>
-          <button type="button" class="preset-chip" data-pattern="^\\d{4}-\\d{2}-\\d{2}$">ISO date (2024-01-15)</button>
-          <button type="button" class="preset-chip" data-pattern="^[A-Z]{2,3}$">Initials (JS)</button>
-          <button type="button" class="preset-chip" data-pattern=".*">Any non-empty value</button>
-        </div>
-        <div class="pattern-tester">
-          <input type="text" id="patternTestValue" placeholder="Try it: type a sample value, e.g. AB-123">
-          <span id="patternTestResult" class="test-result"></span>
-        </div>
 
         <div class="field-row">
           <div class="field">
@@ -197,6 +213,9 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
   const rulePatternInput = root.querySelector('#rulePattern');
   const ruleFindInput = root.querySelector('#ruleFind');
   const ruleValidInput = root.querySelector('#ruleValid');
+  const patternExampleInput = root.querySelector('#patternExample');
+  const patternVariableInput = root.querySelector('#patternVariable');
+  const patternBuilderResult = root.querySelector('#patternBuilderResult');
   const patternTestValue = root.querySelector('#patternTestValue');
   const patternTestResult = root.querySelector('#patternTestResult');
   const formatTestValue = root.querySelector('#formatTestValue');
@@ -227,8 +246,11 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
     root.querySelector('#ruleMessage').value = '';
     root.querySelector('#ruleSeverity').value = 'error';
     root.querySelector('#ruleEnabled').checked = true;
+    patternExampleInput.value = '';
+    patternVariableInput.value = '';
     patternTestValue.value = '';
     formatTestValue.value = '';
+    refreshPatternBuilder();
     refreshPatternTest();
     refreshFormatTest();
   }
@@ -246,8 +268,11 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
     root.querySelector('#ruleMessage').value = rule.message || '';
     root.querySelector('#ruleSeverity').value = rule.severity;
     root.querySelector('#ruleEnabled').checked = rule.enabled;
+    patternExampleInput.value = '';
+    patternVariableInput.value = '';
     patternTestValue.value = '';
     formatTestValue.value = '';
+    refreshPatternBuilder();
     refreshPatternTest();
     refreshFormatTest();
     if (typeof root.querySelector('#ruleEditor').scrollIntoView === 'function') {
@@ -265,6 +290,34 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
 
   function refreshRulesCheck() {
     rulesBody.innerHTML = ruleCheckResults.map(renderSummaryRow).join('');
+  }
+
+  // Derives a Pattern from an example value + the substring of it that
+  // varies between drawings, and writes the result straight into the
+  // Pattern field (see patternTester.js#buildPatternFromExample). Re-run on
+  // every keystroke in either the example or the variable-part field.
+  function refreshPatternBuilder() {
+    const example = patternExampleInput.value;
+    const variable = patternVariableInput.value;
+    if (!example && !variable) {
+      patternBuilderResult.innerHTML = '';
+      return;
+    }
+    const { pattern, explanation, warning, error } = buildPatternFromExample(example, variable);
+    if (error) {
+      patternBuilderResult.innerHTML = `<span class="test-result test-result--neutral">${escapeHtml(error)}</span>`;
+      return;
+    }
+    rulePatternInput.value = pattern;
+    refreshPatternTest();
+    const warningHtml = warning
+      ? `<div class="test-result test-result--bad">${escapeHtml(warning)}</div>`
+      : '';
+    patternBuilderResult.innerHTML = `
+      ${warningHtml}
+      <div class="test-result test-result--ok">${escapeHtml(explanation)}</div>
+      <code class="pattern-builder__regex">${escapeHtml(pattern)}</code>
+    `;
   }
 
   // Live "try it" feedback for the Pattern field, re-run on every keystroke in
@@ -541,12 +594,18 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
     refreshRuleList();
   });
 
+  [patternExampleInput, patternVariableInput].forEach((el) => el.addEventListener('input', refreshPatternBuilder));
   [rulePatternInput, patternTestValue].forEach((el) => el.addEventListener('input', refreshPatternTest));
   [ruleFindInput, ruleValidInput, formatTestValue].forEach((el) => el.addEventListener('input', refreshFormatTest));
 
   root.querySelector('#patternPresets').addEventListener('click', (e) => {
     const chip = e.target.closest('.preset-chip');
     if (!chip) return;
+    // A preset replaces the Pattern field directly, bypassing the builder
+    // above, so clear it out rather than leaving a stale explanation showing.
+    patternExampleInput.value = '';
+    patternVariableInput.value = '';
+    patternBuilderResult.innerHTML = '';
     rulePatternInput.value = chip.dataset.pattern;
     rulePatternInput.focus();
     refreshPatternTest();

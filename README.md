@@ -36,18 +36,38 @@ files you last added; no need to re-drop them.
 ### Writing patterns for drawing number, revision, and other fields
 
 The rule editor's **Pattern** field (used by titleBlock/revision/project
-rules) must match a field's *entire* value — not just part of it. To make
-this easier to get right:
+rules) must match a field's *entire* value — not just part of it. Rather than
+writing that regex by hand, the rule editor leads with a **"Build the
+pattern from an example"** helper:
 
-- An expandable **"Need help writing a pattern?"** cheat-sheet explains the
-  regex building blocks (`^`/`$` anchors, `[A-Z]`, `\d{n}`, `.*`, etc.) in
-  plain English, and explains the difference between Pattern (exact match)
-  and Find/Valid (scan-and-flag, used by formatting rules).
+- Paste one real, complete value into **Example value** — e.g. a drawing
+  number like `J2501-JPD-EBH-DG-20103`.
+- In **Variable part**, enter just the bit of that value that changes from
+  drawing to drawing — e.g. `20103`.
+- The **Pattern** field fills in automatically: everything outside the
+  variable part is kept as fixed literal text, and the variable part becomes
+  "N digits" / "N letters" for each run of digits/uppercase/lowercase letters
+  it contains. For the example above this produces a pattern that requires
+  the literal text `J2501-JPD-EBH-DG-` followed by exactly 5 digits, and an
+  explanation of the match is shown right below the fields.
+- If the variable text appears more than once in the example, a warning
+  says so (the first occurrence is used); if it isn't found in the example
+  at all, or either field is empty, the field explains what to fix — your
+  saved Pattern is left untouched until the inputs make sense.
+
+A **"Quick patterns, or write your own"** section underneath stays available
+for everything the builder doesn't cover:
+
 - One-click **preset chips** fill in ready-made patterns for common fields:
   drawing numbers like `AB-123` or `AB-1234`, a single revision letter or
   number, ISO dates, initials, or a catch-all "any non-empty value" — plus a
   Find/Valid preset for catching US-style dates that should be ISO format.
-- A live **"Try it"** tester sits under both the Pattern field and the
-  Find/Valid fields: type a sample value (or sample line of text) and get
-  immediate ✓ Matches / ✗ Does not match feedback, including a readable
-  message if the regex itself is invalid — all before you save the rule.
+- A cheat-sheet explains the regex building blocks (`^`/`$` anchors,
+  `[A-Z]`, `\d{n}`, `.*`, etc.) in plain English, and explains the
+  difference between Pattern (exact match) and Find/Valid (scan-and-flag,
+  used by formatting rules).
+
+A live **"Try it"** tester sits under both the Pattern field and the
+Find/Valid fields: type a sample value (or sample line of text) and get
+immediate ✓ Matches / ✗ Does not match feedback, including a readable
+message if the regex itself is invalid — all before you save the rule.
