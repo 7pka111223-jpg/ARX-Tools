@@ -37,6 +37,41 @@ test('evaluateFieldRules produces no issues when valid', () => {
   assert.equal(evaluateFieldRules(pages, rules, region).length, 0);
 });
 
+test('evaluateFieldRules falls back to a whole-page scan when the label is not where the region expects it', () => {
+  // No "DWG NO" label anywhere, and the value sits in the top-left - outside
+  // the configured bottom-right region - but it does match the pattern.
+  const pages = [page([{ text: 'J2501-JPD-EBH-DG-20103', x: 10, y: 10 }])];
+  const rules = [{ id: 'dwgNo', category: 'titleBlock', label: 'DWG NO', pattern: '^J2501\\-JPD\\-EBH\\-DG\\-\\d{5}$', severity: 'error' }];
+  assert.equal(evaluateFieldRules(pages, rules, region).length, 0);
+});
+
+test('evaluateFieldRules falls back to a whole-page scan when the labeled value itself is wrong but a valid one is on the page', () => {
+  const pages = [page([
+    { text: 'DWG NO: not-a-number', x: 800, y: 700 },
+    { text: 'J2501-JPD-EBH-DG-20103', x: 10, y: 10 },
+  ])];
+  const rules = [{ id: 'dwgNo', category: 'titleBlock', label: 'DWG NO', pattern: '^J2501\\-JPD\\-EBH\\-DG\\-\\d{5}$', severity: 'error' }];
+  assert.equal(evaluateFieldRules(pages, rules, region).length, 0);
+});
+
+test('evaluateFieldRules still reports missing when neither the label nor a whole-page scan finds a match', () => {
+  const pages = [page([{ text: 'unrelated text', x: 10, y: 10 }])];
+  const rules = [{ id: 'dwgNo', category: 'titleBlock', label: 'DWG NO', pattern: '^J2501\\-JPD\\-EBH\\-DG\\-\\d{5}$', severity: 'error' }];
+  const issues = evaluateFieldRules(pages, rules, region);
+  assert.equal(issues.length, 1);
+  assert.match(issues[0].message, /Missing required field/);
+});
+
+test('evaluateFieldRules does not fall back to a whole-page scan for presence-only rules with no pattern', () => {
+  // No pattern to scan for, so a missing label must still be reported -
+  // the fallback can only confirm "this text satisfies the pattern", and
+  // there is no pattern here.
+  const pages = [page([{ text: 'something else entirely', x: 10, y: 10 }])];
+  const rules = [{ id: 'rev', category: 'revision', label: 'REV', severity: 'error' }];
+  const issues = evaluateFieldRules(pages, rules, region);
+  assert.equal(issues.length, 1);
+});
+
 test('evaluateFormattingRules flags tokens that match find but not valid', () => {
   const pages = [page([{ text: 'DATE: 1/2/26', x: 100, y: 100 }])];
   const rules = [{
@@ -66,6 +101,12 @@ test('evaluateProjectRules flags a mismatched project name', () => {
 test('evaluateProjectRules produces no issues for an exact match', () => {
   const pages = [page([{ text: 'NAME: RightName', x: 800, y: 700 }])];
   const issues = evaluateProjectRules(pages, [{ id: 'name', label: 'NAME', value: 'RightName' }], region);
+  assert.equal(issues.length, 0);
+});
+
+test('evaluateProjectRules falls back to a whole-page scan when the project name is outside the configured region', () => {
+  const pages = [page([{ text: 'Acme', x: 10, y: 10 }])]; // top-left, not bottom-right
+  const issues = evaluateProjectRules(pages, [{ id: 'name', label: 'PROJECT', value: 'Acme' }], region);
   assert.equal(issues.length, 0);
 });
 

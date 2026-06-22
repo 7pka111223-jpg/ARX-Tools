@@ -1,4 +1,4 @@
-import { locateFieldsOnPage } from './titleBlockLocator.js';
+import { locateFieldsOnPage, scanPageForPattern } from './titleBlockLocator.js';
 import { escapeRegex } from './util.js';
 
 export function evaluateFieldRules(pages, fieldRules, region) {
@@ -7,6 +7,16 @@ export function evaluateFieldRules(pages, fieldRules, region) {
     const fields = locateFieldsOnPage(p, fieldRules, region);
     for (const rule of fieldRules) {
       const result = fields[rule.id];
+      if (result.found && (!rule.pattern || result.valid)) continue;
+
+      // The label-based lookup above only finds a field whose exact label
+      // text sits inside the configured title-block region right next to
+      // the value. Real drawings vary - the title block isn't always in
+      // that region, and label wording differs - so before reporting a
+      // field as missing or invalid, fall back to scanning the WHOLE page
+      // for any text that satisfies the rule's pattern on its own.
+      if (rule.pattern && scanPageForPattern(p, rule.pattern) !== null) continue;
+
       if (!result.found) {
         issues.push({
           category: rule.category, severity: rule.severity, ruleId: rule.id,
@@ -62,6 +72,10 @@ export function evaluateProjectRules(pages, projectFields, region) {
   for (const f of requiredFields) {
     const result = fields[f.id];
     if (!result.found || !result.valid) {
+      // Same fallback as evaluateFieldRules: the expected text might be on
+      // the page but outside the configured region, or not directly next
+      // to a recognized label, so check the whole page before giving up.
+      if (scanPageForPattern(firstPage, f.pattern) !== null) continue;
       const original = projectFields.find((pf) => pf.id === f.id);
       issues.push({
         category: 'project', severity: 'error', ruleId: f.id,

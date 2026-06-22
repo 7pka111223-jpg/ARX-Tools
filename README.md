@@ -71,3 +71,17 @@ A live **"Try it"** tester sits under both the Pattern field and the
 Find/Valid fields: type a sample value (or sample line of text) and get
 immediate ✓ Matches / ✗ Does not match feedback, including a readable
 message if the regex itself is invalid — all before you save the rule.
+
+### How the checker finds title-block, revision, and project fields
+
+For each of these fields the checker first looks for the rule's **Label**
+(e.g. `DWG NO`) inside the configured title-block corner/size, and reads the
+value right next to it. Drawings vary, though — the title block isn't
+always in that corner, and the exact label wording on the page doesn't
+always match. So whenever that lookup can't find a field, or finds one that
+doesn't match its Pattern, the checker falls back to scanning the **whole
+page** for any text that satisfies the Pattern on its own, with no label or
+region required. A field is only reported missing/invalid if neither step
+finds a match. This is also why a precise Pattern (built from a real
+example, see above) matters: it's what the whole-page fallback checks
+against.

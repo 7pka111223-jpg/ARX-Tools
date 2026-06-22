@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { locateFieldsOnPage } from '../src/titleBlockLocator.js';
+import { locateFieldsOnPage, scanPageForPattern } from '../src/titleBlockLocator.js';
 
 const region = { corner: 'bottom-right', widthPct: 30, heightPct: 25 };
 
@@ -122,4 +122,38 @@ test('throws on a non-finite region.heightPct', () => {
     () => locateFieldsOnPage(p, [{ id: 'dwgNo', label: 'DWG NO' }], { corner: 'bottom-right', widthPct: 30, heightPct: undefined }),
     /Invalid region.heightPct/
   );
+});
+
+// --- scanPageForPattern: the whole-page fallback used when label-based lookup fails ---
+
+test('scanPageForPattern finds a value anywhere on the page, with no label and no region', () => {
+  // Sits in the top-left, nowhere near a "DWG NO" label - locateFieldsOnPage
+  // would report this as missing, but the text is genuinely on the page.
+  const p = page([{ text: 'J2501-JPD-EBH-DG-20103', x: 10, y: 10 }]);
+  const match = scanPageForPattern(p, '^J2501\\-JPD\\-EBH\\-DG\\-\\d{5}$');
+  assert.equal(match, 'J2501-JPD-EBH-DG-20103');
+});
+
+test('scanPageForPattern returns null when nothing on the page matches', () => {
+  const p = page([{ text: 'REV: A', x: 800, y: 700 }]);
+  const match = scanPageForPattern(p, '^[A-Z]{2}-\\d{3}$');
+  assert.equal(match, null);
+});
+
+test('scanPageForPattern reconstructs a value split across adjacent same-line items', () => {
+  const p = page([
+    { text: 'J2501-JPD-EBH-DG-', x: 10, y: 10 },
+    { text: '20103', x: 90, y: 10 },
+  ]);
+  const match = scanPageForPattern(p, '^J2501\\-JPD\\-EBH\\-DG\\-\\d{5}$');
+  assert.equal(match, 'J2501-JPD-EBH-DG-20103');
+});
+
+test('scanPageForPattern does not merge items from different visual lines', () => {
+  const p = page([
+    { text: 'J2501-JPD-EBH-DG-', x: 10, y: 10 },
+    { text: '20103', x: 90, y: 400 }, // far enough away to be a different line
+  ]);
+  const match = scanPageForPattern(p, '^J2501\\-JPD\\-EBH\\-DG\\-\\d{5}$');
+  assert.equal(match, null);
 });

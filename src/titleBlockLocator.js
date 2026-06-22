@@ -100,3 +100,45 @@ export function locateFieldsOnPage(page, requiredFields, region) {
   }
   return fields;
 }
+
+// Groups items into visual lines (same y, within a small tolerance),
+// left-to-right, so callers can reconstruct a value that a PDF export has
+// split into several text items.
+function groupLines(items, tolerance = 2) {
+  const sorted = [...items].sort((a, b) => a.y - b.y || a.x - b.x);
+  const lines = [];
+  for (const it of sorted) {
+    const last = lines[lines.length - 1];
+    if (last && Math.abs(it.y - last[last.length - 1].y) <= tolerance) last.push(it);
+    else lines.push([it]);
+  }
+  return lines;
+}
+
+// Every text item's own trimmed text, plus (for lines made of more than one
+// item) that line joined with no separator and joined with a single space -
+// covers a value that is its own text item, and one a PDF export has split
+// into adjacent items with no real space between them (e.g. a font/style
+// change partway through the value).
+function pageTextCandidates(page) {
+  const items = page.items.filter((it) => it.text.trim().length > 0);
+  const candidates = items.map((it) => it.text.trim());
+  for (const line of groupLines(items)) {
+    if (line.length < 2) continue;
+    candidates.push(line.map((it) => it.text).join(''));
+    candidates.push(line.map((it) => it.text.trim()).join(' '));
+  }
+  return candidates;
+}
+
+// Scans every text item on the WHOLE page - not just the configured
+// title-block region, and without requiring a label - for any value that
+// fully matches `pattern`. Used as a fallback when the label-based lookup
+// above fails to find a field: the title block isn't always where the
+// region setting expects it, and a drawing's actual label wording doesn't
+// always match the rule's `label` exactly, so a value that is genuinely
+// present on the page would otherwise be reported as missing.
+export function scanPageForPattern(page, pattern) {
+  const re = new RegExp(pattern);
+  return pageTextCandidates(page).find((candidate) => re.test(candidate)) ?? null;
+}
