@@ -95,14 +95,20 @@ prefix.
 
 ### Add comments to the PDFs
 
-In the **Rules check** card, **Download PDFs with comments** re-runs the
-rule checks and saves a copy of each drawing (`<name>-comments.pdf`) with
-every error and warning written onto it:
+A **Download PDFs with comments** button saves a copy of each drawing
+(`<name>-comments.pdf`) with the findings written onto it. There is one in
+each card so you can choose what gets commented:
+
+- **Rules check** card — rule errors and warnings only;
+- **Spelling check** card — misspelled words only, each boxed at the word;
+- the top card — **rules + spelling** together, in a single pass.
+
+For every finding:
 
 - a coloured highlight box and a sticky **comment** are placed on the
   offending text (red for errors, orange for warnings) — e.g. a drawing
-  number that doesn't match its rule gets a note saying so, attached right
-  at the number;
+  number that doesn't match its rule, or a misspelled word, gets a note
+  attached right at the text;
 - a field that is missing entirely (no text on the page satisfies its rule)
   is listed as a stacked comment in the page's top-left corner.
 

@@ -180,7 +180,7 @@
     cursor: pointer;
   }
 
-  #progress, #spellProgress, #rulesProgress, #annotateProgress {
+  #progress, #spellProgress, #rulesProgress, #annotateProgress, #annotateSpellProgress, #annotateBothProgress {
     width: 100%;
     height: 6px;
     border: none;
@@ -190,9 +190,9 @@
     appearance: none;
     background: var(--color-border);
   }
-  #progress::-webkit-progress-bar, #spellProgress::-webkit-progress-bar, #rulesProgress::-webkit-progress-bar, #annotateProgress::-webkit-progress-bar { background: var(--color-border); border-radius: 999px; }
-  #progress::-webkit-progress-value, #spellProgress::-webkit-progress-value, #rulesProgress::-webkit-progress-value, #annotateProgress::-webkit-progress-value { background: var(--color-primary); border-radius: 999px; transition: width 150ms ease; }
-  #progress::-moz-progress-bar, #spellProgress::-moz-progress-bar, #rulesProgress::-moz-progress-bar, #annotateProgress::-moz-progress-bar { background: var(--color-primary); border-radius: 999px; }
+  #progress::-webkit-progress-bar, #spellProgress::-webkit-progress-bar, #rulesProgress::-webkit-progress-bar, #annotateProgress::-webkit-progress-bar, #annotateSpellProgress::-webkit-progress-bar, #annotateBothProgress::-webkit-progress-bar { background: var(--color-border); border-radius: 999px; }
+  #progress::-webkit-progress-value, #spellProgress::-webkit-progress-value, #rulesProgress::-webkit-progress-value, #annotateProgress::-webkit-progress-value, #annotateSpellProgress::-webkit-progress-value, #annotateBothProgress::-webkit-progress-value { background: var(--color-primary); border-radius: 999px; transition: width 150ms ease; }
+  #progress::-moz-progress-bar, #spellProgress::-moz-progress-bar, #rulesProgress::-moz-progress-bar, #annotateProgress::-moz-progress-bar, #annotateSpellProgress::-moz-progress-bar, #annotateBothProgress::-moz-progress-bar { background: var(--color-primary); border-radius: 999px; }
 
   /* Buttons */
   .btn {

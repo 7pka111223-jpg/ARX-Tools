@@ -1,135 +1,82 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  locateFieldsOnPage,
+  findLabeledFieldOnPages,
   scanPageForPattern,
   findPatternMatches,
   longestLiteralStem,
 } from '../src/titleBlockLocator.js';
 
-const region = { corner: 'bottom-right', widthPct: 30, heightPct: 25 };
-
 function page(items) {
   return { pageNumber: 1, width: 1000, height: 800, items };
 }
 
-test('finds a field by label and validates against a pattern', () => {
-  const p = page([{ text: 'DWG NO: AB-123', x: 800, y: 700 }]);
-  const fields = locateFieldsOnPage(p, [{ id: 'dwgNo', label: 'DWG NO', pattern: '^[A-Z]{2}-\\d{3}$' }], region);
-  assert.deepEqual(fields.dwgNo, { value: 'AB-123', found: true, valid: true });
+// Looks a field up anywhere in a single-page document (label finding no
+// longer depends on a title-block region).
+function labeled(items, field, others = [field]) {
+  return findLabeledFieldOnPages([page(items)], field, others);
+}
+
+test('finds a field value by its label anywhere on the page', () => {
+  const found = labeled([{ text: 'DWG NO: AB-123', x: 10, y: 10 }], { id: 'dwgNo', label: 'DWG NO' });
+  assert.equal(found.value, 'AB-123');
+  assert.equal(found.page, 1);
 });
 
-test('marks found but invalid when the value fails the pattern', () => {
-  const p = page([{ text: 'DWG NO: 12345', x: 800, y: 700 }]);
-  const fields = locateFieldsOnPage(p, [{ id: 'dwgNo', label: 'DWG NO', pattern: '^[A-Z]{2}-\\d{3}$' }], region);
-  assert.equal(fields.dwgNo.found, true);
-  assert.equal(fields.dwgNo.valid, false);
-});
-
-test('marks not found when the label is outside the region', () => {
-  const p = page([{ text: 'DWG NO: AB-123', x: 10, y: 10 }]); // top-left, not bottom-right
-  const fields = locateFieldsOnPage(p, [{ id: 'dwgNo', label: 'DWG NO', pattern: '^[A-Z]{2}-\\d{3}$' }], region);
-  assert.equal(fields.dwgNo.found, false);
-});
-
-test('marks not found when the label is missing entirely', () => {
-  const p = page([{ text: 'REV: A', x: 800, y: 700 }]);
-  const fields = locateFieldsOnPage(p, [{ id: 'dwgNo', label: 'DWG NO', pattern: '^[A-Z]{2}-\\d{3}$' }], region);
-  assert.equal(fields.dwgNo.found, false);
-  assert.equal(fields.dwgNo.value, null);
-});
-
-test('a field without a pattern only checks presence', () => {
-  const p = page([{ text: 'DRAWN BY: JS', x: 800, y: 700 }]);
-  const fields = locateFieldsOnPage(p, [{ id: 'drawnBy', label: 'DRAWN BY' }], region);
-  assert.equal(fields.drawnBy.found, true);
-  assert.equal(fields.drawnBy.valid, true);
+test('returns null when the label is missing entirely', () => {
+  const found = labeled([{ text: 'REV: A', x: 800, y: 700 }], { id: 'dwgNo', label: 'DWG NO' });
+  assert.equal(found, null);
 });
 
 // --- Bug A: a label-only item must not swallow the next field's label as its value ---
 test('Bug A: a label with no real value does not swallow the next field label', () => {
-  const p = page([
+  const fields = [
+    { id: 'dwgNo', label: 'DWG NO' },
+    { id: 'rev', label: 'REV' },
+  ];
+  const items = [
     { text: 'DWG NO:', x: 760, y: 700 },
     { text: 'REV:', x: 800, y: 700 },
     { text: 'A', x: 830, y: 700 },
-  ]);
-  const fields = locateFieldsOnPage(
-    p,
-    [
-      { id: 'dwgNo', label: 'DWG NO' },
-      { id: 'rev', label: 'REV' },
-    ],
-    region
-  );
-  assert.deepEqual(fields.dwgNo, { value: null, found: false, valid: false });
-  assert.deepEqual(fields.rev, { value: 'A', found: true, valid: true });
+  ];
+  assert.equal(findLabeledFieldOnPages([page(items)], fields[0], fields), null);
+  assert.equal(findLabeledFieldOnPages([page(items)], fields[1], fields).value, 'A');
 });
 
 // --- Bug D: a label-only item's value, when it comes from a separate next item,
 // must capture the FULL text of that item, not just its first token ---
 test('Bug D: a label-only item takes the full multi-word text of the next item as its value', () => {
-  const p = page([
+  const items = [
     { text: 'DRAWN BY:', x: 760, y: 700 },
     { text: 'JOHN SMITH', x: 800, y: 700 },
-  ]);
-  const fields = locateFieldsOnPage(p, [{ id: 'drawnBy', label: 'DRAWN BY' }], region);
-  assert.deepEqual(fields.drawnBy, { value: 'JOHN SMITH', found: true, valid: true });
+  ];
+  assert.equal(labeled(items, { id: 'drawnBy', label: 'DRAWN BY' }).value, 'JOHN SMITH');
 });
 
 // --- Bug B: a label substring inside an unrelated word must not be matched ---
 test('Bug B: a label hiding inside an unrelated word is not matched', () => {
-  const p = page([
+  const items = [
     { text: 'UPDATED', x: 760, y: 700 },
     { text: 'DATE: 2026-01-01', x: 760, y: 705 },
-  ]);
-  const fields = locateFieldsOnPage(p, [{ id: 'date', label: 'DATE' }], region);
-  assert.deepEqual(fields.date, { value: '2026-01-01', found: true, valid: true });
+  ];
+  assert.equal(labeled(items, { id: 'date', label: 'DATE' }).value, '2026-01-01');
 });
 
 // --- Bug C: overlapping labels (one a prefix/suffix of another) must resolve independently ---
 test('Bug C: overlapping field labels resolve to their own values', () => {
-  const p = page([
+  const fields = [
+    { id: 'date', label: 'DATE' },
+    { id: 'revDate', label: 'REVISION DATE' },
+  ];
+  const items = [
     { text: 'REVISION DATE: 2026-01-02', x: 760, y: 700 },
     { text: 'DATE: 2026-01-01', x: 760, y: 720 },
-  ]);
-  const fields = locateFieldsOnPage(
-    p,
-    [
-      { id: 'date', label: 'DATE' },
-      { id: 'revDate', label: 'REVISION DATE' },
-    ],
-    region
-  );
-  assert.equal(fields.date.value, '2026-01-01');
-  assert.equal(fields.revDate.value, '2026-01-02');
+  ];
+  assert.equal(findLabeledFieldOnPages([page(items)], fields[0], fields).value, '2026-01-01');
+  assert.equal(findLabeledFieldOnPages([page(items)], fields[1], fields).value, '2026-01-02');
 });
 
-// --- Input validation ---
-test('throws on an invalid region.corner', () => {
-  const p = page([{ text: 'DWG NO: AB-123', x: 800, y: 700 }]);
-  assert.throws(
-    () => locateFieldsOnPage(p, [{ id: 'dwgNo', label: 'DWG NO' }], { corner: 'rightt', widthPct: 30, heightPct: 25 }),
-    /Invalid region.corner/
-  );
-});
-
-test('throws on a non-finite region.widthPct', () => {
-  const p = page([{ text: 'DWG NO: AB-123', x: 800, y: 700 }]);
-  assert.throws(
-    () => locateFieldsOnPage(p, [{ id: 'dwgNo', label: 'DWG NO' }], { corner: 'bottom-right', widthPct: NaN, heightPct: 25 }),
-    /Invalid region.widthPct/
-  );
-});
-
-test('throws on a non-finite region.heightPct', () => {
-  const p = page([{ text: 'DWG NO: AB-123', x: 800, y: 700 }]);
-  assert.throws(
-    () => locateFieldsOnPage(p, [{ id: 'dwgNo', label: 'DWG NO' }], { corner: 'bottom-right', widthPct: 30, heightPct: undefined }),
-    /Invalid region.heightPct/
-  );
-});
-
-// --- scanPageForPattern: the whole-page fallback used when label-based lookup fails ---
+// --- scanPageForPattern: locating a value by pattern, with no label ---
 
 test('scanPageForPattern finds a value anywhere on the page, with no label and no region', () => {
   // Sits in the top-left, nowhere near a "DWG NO" label - locateFieldsOnPage

@@ -7,7 +7,6 @@ export const DEFAULT_RULES = {
     { id: 'client', label: 'CLIENT', value: '' },
   ],
   spelling: { language: 'en', customDictionary: [], ignore: [] },
-  titleBlockRegion: { corner: 'bottom-right', widthPct: 30, heightPct: 25 },
   rules: [
     { id: 'dwgNo', category: 'titleBlock', label: 'DWG NO', pattern: '^[A-Z]{2}-\\d{3}$', message: 'Drawing number must match AA-000', severity: 'error', enabled: true },
     { id: 'rev', category: 'revision', label: 'REV', message: 'Revision must be present', severity: 'error', enabled: true },
@@ -20,7 +19,7 @@ export const DEFAULT_RULES = {
 };
 
 function validateRulesShape(r) {
-  for (const key of ['project', 'spelling', 'rules', 'titleBlockRegion']) {
+  for (const key of ['project', 'spelling', 'rules']) {
     if (!(key in r)) throw new Error(`Invalid rules file: missing "${key}"`);
   }
   if (!Array.isArray(r.rules)) throw new Error('Invalid rules file: "rules" must be an array');

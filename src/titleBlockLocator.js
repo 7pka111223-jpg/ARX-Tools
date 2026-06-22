@@ -1,34 +1,5 @@
 import { escapeRegex } from './util.js';
 
-function computeRegionBox(pageWidth, pageHeight, region) {
-  if (!/^(top|bottom)-(left|right)$/.test(region.corner)) {
-    throw new Error(
-      `Invalid region.corner "${region.corner}": expected one of "top-left", "top-right", "bottom-left", "bottom-right"`
-    );
-  }
-  if (!Number.isFinite(region.widthPct)) {
-    throw new Error(`Invalid region.widthPct "${region.widthPct}": expected a finite number`);
-  }
-  if (!Number.isFinite(region.heightPct)) {
-    throw new Error(`Invalid region.heightPct "${region.heightPct}": expected a finite number`);
-  }
-
-  const w = pageWidth * (region.widthPct / 100);
-  const h = pageHeight * (region.heightPct / 100);
-  const right = region.corner.includes('right');
-  const bottom = region.corner.includes('bottom');
-  return {
-    xMin: right ? pageWidth - w : 0,
-    xMax: right ? pageWidth : w,
-    yMin: bottom ? pageHeight - h : 0,
-    yMax: bottom ? pageHeight : h,
-  };
-}
-
-function inBox(item, box) {
-  return item.x >= box.xMin && item.x <= box.xMax && item.y >= box.yMin && item.y <= box.yMax;
-}
-
 // The on-page rectangle of a single text item, in the same top-down y
 // coordinate space the extractor produces (used to place PDF annotations).
 export function itemBox(item) {
@@ -95,24 +66,6 @@ function findLabeledField(items, field, requiredFields) {
   }
 
   return null;
-}
-
-function findFieldValue(items, field, requiredFields) {
-  const found = findLabeledField(items, field, requiredFields);
-  return found ? found.value : null;
-}
-
-export function locateFieldsOnPage(page, requiredFields, region) {
-  const box = computeRegionBox(page.width, page.height, region);
-  const items = page.items.filter((it) => inBox(it, box)).sort((a, b) => a.y - b.y || a.x - b.x);
-
-  const fields = {};
-  for (const f of requiredFields) {
-    const value = findFieldValue(items, f, requiredFields);
-    const valid = value !== null && (!f.pattern || new RegExp(f.pattern).test(value));
-    fields[f.id] = { value, found: value !== null, valid };
-  }
-  return fields;
 }
 
 // Searches the WHOLE document (every page, every item, no region) for a

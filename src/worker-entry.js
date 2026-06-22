@@ -33,7 +33,14 @@ self.onmessage = async (event) => {
     } else if (mode === 'rules') {
       result = await ruleCheckFile(fileName, pdfBytes, rulesConfig);
     } else if (mode === 'annotate') {
-      result = await annotateFile(fileName, pdfBytes, rulesConfig);
+      const { includeRules = true, includeSpelling = false } = event.data;
+      result = await annotateFile(fileName, pdfBytes, {
+        rulesConfig,
+        spellingConfig,
+        spellInstance: includeSpelling ? getSpellInstance() : null,
+        includeRules,
+        includeSpelling,
+      });
     } else {
       result = await processFile(fileName, pdfBytes, rulesConfig, getSpellInstance());
     }

@@ -34,8 +34,11 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
       <div class="toolbar">
         <button id="exportHtml" class="btn">Export HTML report</button>
         <button id="exportCsv" class="btn">Export CSV</button>
+        <button id="annotateBoth" class="btn">Download PDFs with comments (rules + spelling)</button>
         <button id="runSelfTest" class="btn">Run self-test</button>
       </div>
+      <progress id="annotateBothProgress" value="0" max="1"></progress>
+      <p id="annotateBothStatus" class="card__hint"></p>
     </section>
 
     <section class="card">
@@ -52,7 +55,10 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
       <div class="toolbar">
         <button id="exportSpellHtml" class="btn">Export spelling report (HTML)</button>
         <button id="exportSpellCsv" class="btn">Export spelling CSV</button>
+        <button id="annotateSpelling" class="btn">Download PDFs with comments</button>
       </div>
+      <progress id="annotateSpellProgress" value="0" max="1"></progress>
+      <p id="annotateSpellStatus" class="card__hint"></p>
     </section>
 
     <section class="card">
@@ -213,6 +219,12 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
   const annotateBtn = root.querySelector('#annotatePdfs');
   const annotateProgress = root.querySelector('#annotateProgress');
   const annotateStatus = root.querySelector('#annotateStatus');
+  const annotateSpellBtn = root.querySelector('#annotateSpelling');
+  const annotateSpellProgress = root.querySelector('#annotateSpellProgress');
+  const annotateSpellStatus = root.querySelector('#annotateSpellStatus');
+  const annotateBothBtn = root.querySelector('#annotateBoth');
+  const annotateBothProgress = root.querySelector('#annotateBothProgress');
+  const annotateBothStatus = root.querySelector('#annotateBothStatus');
   const ruleList = root.querySelector('#ruleList');
   const ruleIdInput = root.querySelector('#ruleId');
   const ruleEditorTitle = root.querySelector('#ruleEditorTitle');
@@ -500,11 +512,13 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
     }
   }
 
-  // Re-runs the rule checks per file and downloads a copy of each PDF with
-  // every error/warning written onto it as a comment (a highlight box + a
-  // sticky note at the offending text, or stacked at the page corner when a
-  // field is missing entirely).
-  async function handleAnnotate() {
+  // Re-runs the requested check(s) per file and downloads a copy of each PDF
+  // with every error/warning written onto it as a comment (a highlight box +
+  // a sticky note at the offending text, or stacked at the page corner when a
+  // field is missing entirely). `includeRules`/`includeSpelling` select which
+  // checks contribute comments, so the same flow powers the rules-only,
+  // spelling-only, and combined buttons.
+  async function annotateBatch({ includeRules, includeSpelling, btn, progress, status }) {
     if (busy) {
       alert('A batch is already being processed — please wait for it to finish.');
       return;
@@ -514,12 +528,13 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
       return;
     }
     busy = true;
-    annotateBtn.disabled = true;
-    annotateStatus.textContent = '';
+    btn.disabled = true;
+    status.textContent = '';
     try {
-      annotateProgress.max = lastFiles.length || 1;
-      annotateProgress.value = 0;
+      progress.max = lastFiles.length || 1;
+      progress.value = 0;
       const rulesConfig = store.getRules();
+      const spellingConfig = rulesConfig.spelling;
       const worker = createWorker();
       let annotated = 0;
       const skipped = [];
@@ -530,7 +545,10 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
             worker.onmessage = (e) => {
               if (e.data && e.data.jobId === file.name) resolve(e.data.result);
             };
-            worker.postMessage({ mode: 'annotate', fileName: file.name, pdfBytes, rulesConfig, jobId: file.name }, [pdfBytes.buffer]);
+            worker.postMessage(
+              { mode: 'annotate', fileName: file.name, pdfBytes, rulesConfig, spellingConfig, includeRules, includeSpelling, jobId: file.name },
+              [pdfBytes.buffer]
+            );
           });
           if (result.annotatedBytes) {
             downloadFile(commentedName(file.name), result.annotatedBytes, 'application/pdf');
@@ -538,19 +556,26 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
           } else {
             skipped.push(`${file.name}: ${result.error || 'no annotations produced'}`);
           }
-          annotateProgress.value += 1;
+          progress.value += 1;
         }
       } finally {
         worker.terminate();
       }
       const parts = [`Added comments to ${annotated} PDF(s).`];
       if (skipped.length) parts.push(`Skipped ${skipped.length}: ${skipped.join('; ')}`);
-      annotateStatus.textContent = parts.join(' ');
+      status.textContent = parts.join(' ');
     } finally {
       busy = false;
-      annotateBtn.disabled = false;
+      btn.disabled = false;
     }
   }
+
+  const handleAnnotateRules = () =>
+    annotateBatch({ includeRules: true, includeSpelling: false, btn: annotateBtn, progress: annotateProgress, status: annotateStatus });
+  const handleAnnotateSpelling = () =>
+    annotateBatch({ includeRules: false, includeSpelling: true, btn: annotateSpellBtn, progress: annotateSpellProgress, status: annotateSpellStatus });
+  const handleAnnotateBoth = () =>
+    annotateBatch({ includeRules: true, includeSpelling: true, btn: annotateBothBtn, progress: annotateBothProgress, status: annotateBothStatus });
 
   fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
   dropZone.addEventListener('dragover', (e) => e.preventDefault());
@@ -582,7 +607,9 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
   root.querySelector('#exportRulesCsv').addEventListener('click', () => {
     downloadFile('rules-check-report.csv', generateCsv(aggregateResults(ruleCheckResults)), 'text/csv');
   });
-  annotateBtn.addEventListener('click', () => handleAnnotate());
+  annotateBtn.addEventListener('click', handleAnnotateRules);
+  annotateSpellBtn.addEventListener('click', handleAnnotateSpelling);
+  annotateBothBtn.addEventListener('click', handleAnnotateBoth);
   root.querySelector('#runSelfTest').addEventListener('click', async () => {
     const { runSelfTest } = await import('../selfTest.js');
     const result = runSelfTest();
@@ -684,7 +711,9 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
     handleFiles,
     handleSpellCheck,
     handleRuleCheck,
-    handleAnnotate,
+    handleAnnotateRules,
+    handleAnnotateSpelling,
+    handleAnnotateBoth,
     refreshSummary,
     refreshSpelling,
     refreshRulesCheck,

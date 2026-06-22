@@ -344,10 +344,9 @@ test('the rules check warns and does nothing when no files have been added', asy
   assert.equal(root.querySelectorAll('#rulesTable tbody tr').length, 0);
 });
 
-test('the annotate pass requests annotated bytes per file, downloads them, and reports a summary', async () => {
-  setupDom();
-  // downloadFile uses object URLs / an anchor click, which jsdom doesn't
-  // implement — stub them so the flow runs headlessly.
+// Stubs object-URL / anchor-click downloads (jsdom doesn't implement them)
+// and captures the message each annotate request posts to the worker.
+function setupAnnotateCapture() {
   global.URL.createObjectURL = () => 'blob:stub';
   global.URL.revokeObjectURL = () => {};
   const downloaded = [];
@@ -357,38 +356,77 @@ test('the annotate pass requests annotated bytes per file, downloads them, and r
     return el;
   })(global.document.createElement);
 
-  const root = document.getElementById('app');
+  const posted = [];
   const fakeWorker = {
     postMessage(msg) {
       let result;
       if (msg.mode === 'annotate') {
+        posted.push(msg);
         result = msg.fileName === 'bad.pdf'
           ? { fileName: msg.fileName, error: 'No text found — this PDF may be a scanned image, not a CAD export.', annotatedBytes: null, issueCount: 0 }
           : { fileName: msg.fileName, error: null, annotatedBytes: new Uint8Array([37, 80, 68, 70]), issueCount: 2, errorCount: 1, warnCount: 1 };
       } else {
-        // The initial full-check pass that records the file selection.
         result = { fileName: msg.fileName, pass: true, issues: [], counts: { error: 0, warn: 0 } };
       }
       this.onmessage({ data: { jobId: msg.jobId, result } });
     },
     terminate() {},
   };
+  return { downloaded, posted, fakeWorker };
+}
 
+test('the rules annotate pass downloads commented copies and reports a summary', async () => {
+  setupDom();
+  const { downloaded, posted, fakeWorker } = setupAnnotateCapture();
+  const root = document.getElementById('app');
   const app = initApp(root, { createWorker: () => fakeWorker });
   const ok = { name: 'good.pdf', arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) };
   const bad = { name: 'bad.pdf', arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) };
 
   await app.handleFiles([ok, bad]);
-  await app.handleAnnotate();
+  await app.handleAnnotateRules();
 
   assert.deepEqual(downloaded, ['good-comments.pdf']);
+  assert.ok(posted.every((m) => m.includeRules === true && m.includeSpelling === false));
   const status = root.querySelector('#annotateStatus').textContent;
   assert.match(status, /Added comments to 1 PDF\(s\)/);
   assert.match(status, /Skipped 1/);
   assert.match(status, /No text found/);
 });
 
-test('the annotate pass warns and does nothing when no files have been added', async () => {
+test('the spelling annotate pass requests spelling-only comments', async () => {
+  setupDom();
+  const { downloaded, posted, fakeWorker } = setupAnnotateCapture();
+  const root = document.getElementById('app');
+  const app = initApp(root, { createWorker: () => fakeWorker });
+  const ok = { name: 'good.pdf', arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) };
+
+  await app.handleFiles([ok]);
+  await app.handleAnnotateSpelling();
+
+  assert.deepEqual(downloaded, ['good-comments.pdf']);
+  assert.ok(posted.every((m) => m.includeRules === false && m.includeSpelling === true));
+  // The spelling card has its own status line, kept separate from the rules one.
+  assert.match(root.querySelector('#annotateSpellStatus').textContent, /Added comments to 1 PDF\(s\)/);
+  assert.equal(root.querySelector('#annotateStatus').textContent, '');
+});
+
+test('the combined annotate pass requests both rules and spelling comments', async () => {
+  setupDom();
+  const { posted, fakeWorker } = setupAnnotateCapture();
+  const root = document.getElementById('app');
+  const app = initApp(root, { createWorker: () => fakeWorker });
+  const ok = { name: 'good.pdf', arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) };
+
+  await app.handleFiles([ok]);
+  await app.handleAnnotateBoth();
+
+  assert.ok(posted.length > 0);
+  assert.ok(posted.every((m) => m.includeRules === true && m.includeSpelling === true));
+  assert.match(root.querySelector('#annotateBothStatus').textContent, /Added comments to 1 PDF\(s\)/);
+});
+
+test('an annotate pass warns and does nothing when no files have been added', async () => {
   setupDom();
   const root = document.getElementById('app');
   const app = initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
@@ -396,7 +434,7 @@ test('the annotate pass warns and does nothing when no files have been added', a
   let alertMessage = null;
   global.alert = (msg) => { alertMessage = msg; };
 
-  await app.handleAnnotate();
+  await app.handleAnnotateSpelling();
 
   assert.equal(typeof alertMessage, 'string');
   assert.ok(alertMessage.length > 0);

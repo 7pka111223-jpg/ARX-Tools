@@ -1,10 +1,7 @@
 import { evaluateRules } from './rulesEngine.js';
 
-const REGION = { corner: 'bottom-right', widthPct: 30, heightPct: 25 };
-
 const SELF_TEST_RULES = {
   project: [],
-  titleBlockRegion: REGION,
   rules: [
     { id: 'dwgNo', category: 'titleBlock', label: 'DWG NO', pattern: '^[A-Z]{2}-\\d{3}$', severity: 'error', enabled: true },
     { id: 'rev', category: 'revision', label: 'REV', severity: 'error', enabled: true },
