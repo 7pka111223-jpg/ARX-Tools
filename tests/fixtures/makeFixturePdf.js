@@ -14,6 +14,16 @@ export async function makeFixturePdf({ withText = true } = {}) {
   return doc.save();
 }
 
+// Builds a one-page PDF containing a deliberately misspelled word alongside a
+// correctly spelled one, so the standalone spelling pass has something to flag.
+export async function makeMisspellingPdf() {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([600, 400]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  page.drawText('clarifeir tank', { x: 100, y: 300, size: 12, font, color: rgb(0, 0, 0) });
+  return doc.save();
+}
+
 // Builds a PDF whose document catalog/trailer/xref are intact (so
 // pdfjsLib.getDocument(...) opens it successfully) but whose page tree
 // /Kids array points at an object number that doesn't exist. pdfjs only

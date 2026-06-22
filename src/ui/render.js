@@ -27,3 +27,23 @@ export function renderRuleRow(rule) {
     </div>
   </div>`;
 }
+
+// Renders one-or-more <tr> rows for a single file's spelling result: a single
+// status row for extraction errors or a clean bill of health, otherwise one
+// row per distinct misspelled word with its suggested corrections.
+const MAX_SUGGESTIONS = 5;
+
+export function renderSpellingRows(result) {
+  if (result.error) {
+    return `<tr><td>${escapeHtml(result.fileName)}</td><td class="fail" colspan="3">${escapeHtml(result.error)}</td></tr>`;
+  }
+  if (result.misspellings.length === 0) {
+    return `<tr><td>${escapeHtml(result.fileName)}</td><td class="pass" colspan="3">No misspellings found</td></tr>`;
+  }
+  return result.misspellings
+    .map((m) => {
+      const suggestions = m.suggestions.slice(0, MAX_SUGGESTIONS).join(', ') || '—';
+      return `<tr><td>${escapeHtml(result.fileName)}</td><td>${escapeHtml(m.word)}</td><td>${escapeHtml(m.pages.join(', '))}</td><td>${escapeHtml(suggestions)}</td></tr>`;
+    })
+    .join('');
+}

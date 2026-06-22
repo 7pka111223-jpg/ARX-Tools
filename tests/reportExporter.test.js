@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateCsv, generateHtmlReport } from '../src/reportExporter.js';
+import { generateCsv, generateHtmlReport, generateSpellingCsv, generateSpellingHtmlReport } from '../src/reportExporter.js';
 import { buildDrawingResult, aggregateResults } from '../src/resultsModel.js';
 
 function sampleAggregate() {
@@ -81,6 +81,46 @@ test('generateHtmlReport escapes html-unsafe content', () => {
     { category: 'spelling', severity: 'warn', ruleId: 'spelling', foundText: '<script>', page: 1, message: 'msg' },
   ])]);
   const html = generateHtmlReport(agg);
+  assert.ok(!html.includes('<script>'));
+  assert.ok(html.includes('&lt;script&gt;'));
+});
+
+const sampleSpelling = () => [
+  { fileName: 'a.pdf', error: null, misspellings: [{ word: 'clarifeir', pages: [1, 2], suggestions: ['clarifier', 'clarified'] }] },
+  { fileName: 'b.pdf', error: null, misspellings: [] },
+  { fileName: 'c.pdf', error: 'No text found — this PDF may be a scanned image, not a CAD export.', misspellings: [] },
+];
+
+test('generateSpellingCsv has a header and a row per misspelling with suggestions', () => {
+  const csv = generateSpellingCsv(sampleSpelling());
+  const lines = csv.split('\n');
+  assert.equal(lines[0], 'fileName,word,pages,suggestions');
+  const row = lines.find((l) => l.includes('clarifeir'));
+  assert.ok(row.includes('clarifier'));
+  // Files with no misspellings and files with errors still get a status row.
+  assert.ok(lines.some((l) => l.startsWith('b.pdf') && l.includes('No misspellings found')));
+  assert.ok(lines.some((l) => l.startsWith('c.pdf') && l.includes('No text found')));
+});
+
+test('generateSpellingCsv neutralizes formula-injection in a suggestion-like field', () => {
+  const csv = generateSpellingCsv([
+    { fileName: 'a.pdf', error: null, misspellings: [{ word: '=cmd', pages: [1], suggestions: ['ok'] }] },
+  ]);
+  assert.ok(csv.includes("'=cmd"));
+});
+
+test('generateSpellingHtmlReport lists misspellings, suggestions, and a total', () => {
+  const html = generateSpellingHtmlReport(sampleSpelling());
+  assert.ok(html.includes('<title>Spelling Report</title>'));
+  assert.ok(html.includes('clarifeir'));
+  assert.ok(html.includes('clarifier'));
+  assert.ok(html.includes('1 possible misspelling(s) across 3 file(s)'));
+});
+
+test('generateSpellingHtmlReport escapes html-unsafe content', () => {
+  const html = generateSpellingHtmlReport([
+    { fileName: '<a>.pdf', error: null, misspellings: [{ word: '<script>', pages: [1], suggestions: ['<b>'] }] },
+  ]);
   assert.ok(!html.includes('<script>'));
   assert.ok(html.includes('&lt;script&gt;'));
 });

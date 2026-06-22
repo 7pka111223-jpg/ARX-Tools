@@ -222,6 +222,49 @@ test('handleFiles ignores stray messages that do not match the expected jobId', 
   assert.ok(rows[0].textContent.includes('PASS'));
 });
 
+test('the spelling check runs a spelling-only worker pass and renders misspellings with suggestions', async () => {
+  setupDom();
+  const root = document.getElementById('app');
+
+  // A worker that branches on the message mode: a spelling pass returns
+  // misspellings-with-suggestions; the default full pass returns a clean result.
+  const fakeWorker = {
+    postMessage(msg) {
+      const result = msg.mode === 'spelling'
+        ? { fileName: msg.fileName, error: null, misspellings: [{ word: 'clarifeir', pages: [1], suggestions: ['clarifier'] }] }
+        : { fileName: msg.fileName, pass: true, issues: [], counts: { error: 0, warn: 0 } };
+      this.onmessage({ data: { jobId: msg.jobId, result } });
+    },
+    terminate() {},
+  };
+
+  const app = initApp(root, { createWorker: () => fakeWorker });
+  const file = { name: 'a.pdf', arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) };
+
+  // The full pass records the file selection that the spelling pass reuses.
+  await app.handleFiles([file]);
+  await app.handleSpellCheck();
+
+  const spellTable = root.querySelector('#spellTable');
+  assert.ok(spellTable.textContent.includes('clarifeir'));
+  assert.ok(spellTable.textContent.includes('clarifier'));
+});
+
+test('the spelling check warns and does nothing when no files have been added', async () => {
+  setupDom();
+  const root = document.getElementById('app');
+  const app = initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
+
+  let alertMessage = null;
+  global.alert = (msg) => { alertMessage = msg; };
+
+  await app.handleSpellCheck();
+
+  assert.equal(typeof alertMessage, 'string');
+  assert.ok(alertMessage.length > 0);
+  assert.equal(root.querySelectorAll('#spellTable tbody tr').length, 0);
+});
+
 test('handleFiles ignores a stray message with a mismatched jobId across multiple files', async () => {
   setupDom();
   const root = document.getElementById('app');

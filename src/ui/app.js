@@ -1,11 +1,16 @@
 import { createRulesStore, DEFAULT_RULES } from '../rulesStore.js';
 import { aggregateResults } from '../resultsModel.js';
-import { generateCsv, generateHtmlReport } from '../reportExporter.js';
-import { renderSummaryRow, renderRuleRow } from './render.js';
+import { generateCsv, generateHtmlReport, generateSpellingCsv, generateSpellingHtmlReport } from '../reportExporter.js';
+import { renderSummaryRow, renderRuleRow, renderSpellingRows } from './render.js';
 
 export function initApp(root, { createWorker = () => window.__createWorker() } = {}) {
   const store = createRulesStore(DEFAULT_RULES);
   let drawingResults = [];
+  let spellingResults = [];
+  // Retain the File objects from the last selection so the standalone spelling
+  // check can re-read them (the full-check pass transfers each file's bytes to
+  // the worker, but the File objects themselves remain re-readable).
+  let lastFiles = [];
   let busy = false;
 
   root.innerHTML = `
@@ -26,6 +31,23 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
         <button id="exportHtml" class="btn">Export HTML report</button>
         <button id="exportCsv" class="btn">Export CSV</button>
         <button id="runSelfTest" class="btn">Run self-test</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card__header">
+        <h2 class="card__title">Spelling check</h2>
+        <span class="card__hint">Run a dedicated spelling-only pass and export each misspelling with suggested corrections</span>
+      </div>
+      <button id="checkSpelling" class="btn btn-primary">Check spelling</button>
+      <progress id="spellProgress" value="0" max="1"></progress>
+      <table id="spellTable">
+        <thead><tr><th>File</th><th>Misspelling</th><th>Page(s)</th><th>Suggestions</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="toolbar">
+        <button id="exportSpellHtml" class="btn">Export spelling report (HTML)</button>
+        <button id="exportSpellCsv" class="btn">Export spelling CSV</button>
       </div>
     </section>
 
@@ -106,6 +128,9 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
   const dropZone = root.querySelector('#dropZone');
   const progress = root.querySelector('#progress');
   const summaryBody = root.querySelector('#summaryTable tbody');
+  const checkSpellingBtn = root.querySelector('#checkSpelling');
+  const spellProgress = root.querySelector('#spellProgress');
+  const spellBody = root.querySelector('#spellTable tbody');
   const ruleList = root.querySelector('#ruleList');
   const ruleIdInput = root.querySelector('#ruleId');
   const ruleEditorTitle = root.querySelector('#ruleEditorTitle');
@@ -159,6 +184,10 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
     summaryBody.innerHTML = drawingResults.map(renderSummaryRow).join('');
   }
 
+  function refreshSpelling() {
+    spellBody.innerHTML = spellingResults.map(renderSpellingRows).join('');
+  }
+
   async function handleFiles(files) {
     if (busy) {
       alert('A batch is already being processed — please wait for it to finish.');
@@ -168,6 +197,8 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
     fileInput.disabled = true;
     try {
       const pdfFiles = [...files].filter((f) => f.name.toLowerCase().endsWith('.pdf'));
+      // Remember the selection so the standalone spelling check can reuse it.
+      lastFiles = pdfFiles;
       progress.max = pdfFiles.length || 1;
       progress.value = 0;
       drawingResults = [];
@@ -196,6 +227,47 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
     }
   }
 
+  async function handleSpellCheck() {
+    if (busy) {
+      alert('A batch is already being processed — please wait for it to finish.');
+      return;
+    }
+    if (lastFiles.length === 0) {
+      alert('Add PDF drawings first, then run the spelling check.');
+      return;
+    }
+    busy = true;
+    checkSpellingBtn.disabled = true;
+    try {
+      spellProgress.max = lastFiles.length || 1;
+      spellProgress.value = 0;
+      spellingResults = [];
+      const spellingConfig = store.getRules().spelling;
+      const worker = createWorker();
+      try {
+        for (const file of lastFiles) {
+          const pdfBytes = new Uint8Array(await file.arrayBuffer());
+          const result = await new Promise((resolve) => {
+            worker.onmessage = (e) => {
+              if (e.data && e.data.jobId === file.name) {
+                resolve(e.data.result);
+              }
+            };
+            worker.postMessage({ mode: 'spelling', fileName: file.name, pdfBytes, spellingConfig, jobId: file.name }, [pdfBytes.buffer]);
+          });
+          spellingResults.push(result);
+          spellProgress.value += 1;
+          refreshSpelling();
+        }
+      } finally {
+        worker.terminate();
+      }
+    } finally {
+      busy = false;
+      checkSpellingBtn.disabled = false;
+    }
+  }
+
   fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
   dropZone.addEventListener('dragover', (e) => e.preventDefault());
   dropZone.addEventListener('dragenter', () => dropZone.classList.add('is-dragover'));
@@ -211,6 +283,13 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
   });
   root.querySelector('#exportCsv').addEventListener('click', () => {
     downloadFile('drawing-check-report.csv', generateCsv(aggregateResults(drawingResults)), 'text/csv');
+  });
+  checkSpellingBtn.addEventListener('click', () => handleSpellCheck());
+  root.querySelector('#exportSpellHtml').addEventListener('click', () => {
+    downloadFile('spelling-report.html', generateSpellingHtmlReport(spellingResults), 'text/html');
+  });
+  root.querySelector('#exportSpellCsv').addEventListener('click', () => {
+    downloadFile('spelling-report.csv', generateSpellingCsv(spellingResults), 'text/csv');
   });
   root.querySelector('#runSelfTest').addEventListener('click', async () => {
     const { runSelfTest } = await import('../selfTest.js');
@@ -282,7 +361,7 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
     refreshRuleList();
   });
 
-  return { store, handleFiles, refreshSummary, refreshRuleList };
+  return { store, handleFiles, handleSpellCheck, refreshSummary, refreshSpelling, refreshRuleList };
 }
 
 function downloadFile(name, content, mime) {

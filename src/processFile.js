@@ -2,16 +2,13 @@ import { extractPdfText } from './pdfExtractor.js';
 import { evaluateRules } from './rulesEngine.js';
 import { checkSpelling } from './spellChecker.js';
 import { buildDrawingResult } from './resultsModel.js';
+import { splitWords } from './util.js';
 
 export function toExtractionIssue(err) {
   if (err.code === 'ENCRYPTED') {
     return { category: 'extraction', severity: 'error', ruleId: 'encrypted', foundText: null, page: null, message: 'PDF is password-protected and could not be read.' };
   }
   return { category: 'extraction', severity: 'error', ruleId: 'corrupt', foundText: null, page: null, message: `PDF could not be read: ${err.message}` };
-}
-
-function splitWords(text, page) {
-  return text.split(/\s+/).filter(Boolean).map((w) => ({ text: w, page }));
 }
 
 export async function processFile(fileName, pdfBytes, rulesConfig, spellInstance) {
