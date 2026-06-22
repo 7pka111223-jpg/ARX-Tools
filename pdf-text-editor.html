@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF Text Editor — Find &amp; Replace for Engineering Drawings</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --panel2:#273449; --line:#334155;
+    --text:#e2e8f0; --muted:#94a3b8; --accent:#38bdf8; --accent2:#0ea5e9;
+    --good:#34d399; --warn:#fbbf24; --bad:#f87171; --radius:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--text); font:14px/1.5 system-ui,Segoe UI,Roboto,Arial,sans-serif;
+    min-height:100vh;
+  }
+  header{
+    padding:20px 24px; border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#13203b,#0f172a);
+  }
+  header h1{margin:0 0 4px; font-size:19px; letter-spacing:.2px}
+  header p{margin:0; color:var(--muted); font-size:13px}
+  main{max-width:1100px; margin:0 auto; padding:22px 24px 60px}
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:18px; margin-bottom:18px}
+  .panel h2{margin:0 0 12px; font-size:14px; text-transform:uppercase; letter-spacing:.6px; color:var(--accent)}
+  .drop{
+    border:2px dashed var(--line); border-radius:var(--radius); padding:30px; text-align:center;
+    color:var(--muted); cursor:pointer; transition:.15s; background:var(--panel2);
+  }
+  .drop.drag{border-color:var(--accent); color:var(--text); background:#21344f}
+  .drop strong{color:var(--text)}
+  .row{display:flex; gap:14px; flex-wrap:wrap}
+  .field{flex:1 1 220px; min-width:200px}
+  label{display:block; font-size:12px; color:var(--muted); margin-bottom:5px}
+  input[type=text]{
+    width:100%; padding:9px 11px; border-radius:8px; border:1px solid var(--line);
+    background:#0b1426; color:var(--text); font:inherit;
+  }
+  input[type=text]:focus{outline:none; border-color:var(--accent)}
+  .checks{display:flex; gap:18px; flex-wrap:wrap; margin-top:12px}
+  .checks label{display:flex; align-items:center; gap:7px; color:var(--text); font-size:13px; margin:0; cursor:pointer}
+  .btns{display:flex; gap:10px; flex-wrap:wrap; margin-top:16px}
+  button{
+    border:0; border-radius:8px; padding:10px 18px; font:inherit; font-weight:600; cursor:pointer;
+    background:var(--panel2); color:var(--text); border:1px solid var(--line);
+  }
+  button:hover:not(:disabled){border-color:var(--accent)}
+  button.primary{background:var(--accent2); border-color:var(--accent2); color:#04121f}
+  button.primary:hover:not(:disabled){background:var(--accent)}
+  button:disabled{opacity:.45; cursor:not-allowed}
+  .meta{font-size:12px; color:var(--muted); margin-top:10px}
+  .pill{display:inline-block; padding:2px 9px; border-radius:999px; font-size:12px; font-weight:600}
+  .pill.good{background:rgba(52,211,153,.15); color:var(--good)}
+  .pill.warn{background:rgba(251,191,36,.15); color:var(--warn)}
+  .pill.bad{background:rgba(248,113,113,.15); color:var(--bad)}
+  .log{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; white-space:pre-wrap; max-height:260px; overflow:auto; background:#0b1426; border:1px solid var(--line); border-radius:8px; padding:12px}
+  .matches{max-height:320px; overflow:auto; border:1px solid var(--line); border-radius:8px}
+  .matches table{width:100%; border-collapse:collapse; font-size:13px}
+  .matches th,.matches td{text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); vertical-align:top}
+  .matches th{position:sticky; top:0; background:var(--panel2); color:var(--muted); font-weight:600}
+  .matches code{background:#0b1426; padding:1px 5px; border-radius:5px; color:#cbd5e1}
+  .hi{background:rgba(56,189,248,.28); color:#fff; border-radius:3px; padding:0 2px}
+  .hint{font-size:12.5px; color:var(--muted)}
+  details{margin-top:6px}
+  summary{cursor:pointer; color:var(--accent); font-size:13px}
+  details ul{margin:8px 0 0; padding-left:20px; color:var(--muted); font-size:12.5px}
+  details li{margin:4px 0}
+  .empty{color:var(--muted); padding:14px; text-align:center; font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <h1>PDF Text Editor — Find &amp; Replace</h1>
+  <p>Edit text inside engineering drawings in your browser. Same font, same size, same position — only the characters change. 100% offline, single file, nothing uploaded.</p>
+</header>
+
+<main>
+  <div class="panel">
+    <h2>1 · Open a PDF</h2>
+    <div id="drop" class="drop">
+      <strong>Drop a PDF here</strong> or click to choose a file<br>
+      <span class="hint">Files stay on your computer — nothing is sent anywhere.</span>
+    </div>
+    <input id="file" type="file" accept="application/pdf,.pdf" hidden>
+    <div id="fileMeta" class="meta"></div>
+  </div>
+
+  <div class="panel">
+    <h2>2 · Find &amp; Replace</h2>
+    <div class="row">
+      <div class="field">
+        <label for="find">Find text</label>
+        <input id="find" type="text" placeholder="e.g. REV A" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="repl">Replace with</label>
+        <input id="repl" type="text" placeholder="e.g. REV B" autocomplete="off">
+      </div>
+    </div>
+    <div class="checks">
+      <label><input id="cs" type="checkbox"> Match case</label>
+      <label><input id="ww" type="checkbox"> Whole word only</label>
+    </div>
+    <div class="btns">
+      <button id="scanBtn" disabled>Scan / preview matches</button>
+      <button id="applyBtn" class="primary" disabled>Replace &amp; download PDF</button>
+      <button id="extractBtn" disabled>Show all editable text</button>
+    </div>
+    <div id="status" class="meta"></div>
+  </div>
+
+  <div class="panel" id="matchPanel" style="display:none">
+    <h2>Matches</h2>
+    <div id="matches" class="matches"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Activity log</h2>
+    <div id="log" class="log">Ready. Open a PDF to begin.</div>
+    <details>
+      <summary>What this tool can and cannot edit</summary>
+      <ul>
+        <li><strong>Works:</strong> PDFs whose text is real, selectable text drawn with embedded or standard fonts using ASCII/Latin-1 encoding (most CAD exports, title blocks, notes, revision tags).</li>
+        <li><strong>Preserved exactly:</strong> font, size, position, color, rotation and all other graphics. Only the string operand of the text is changed, written back as an incremental update so the rest of the file is untouched.</li>
+        <li><strong>Cannot edit:</strong> text that the CAD program exported as vector outlines/curves (it is geometry, not text — nothing to find). Use "Show all editable text" to confirm what is real text.</li>
+        <li><strong>Limited:</strong> subset or CID fonts that use custom non-ASCII encodings; the new characters may not have glyphs in the embedded subset. The tool reports when text cannot be matched.</li>
+        <li><strong>Glyph note:</strong> if you replace with characters the embedded font does not contain (e.g. a symbol), they may render as blanks. Stick to characters already used in the drawing for guaranteed results.</li>
+      </ul>
+    </details>
+  </div>
+</main>
+
+<script>
+"use strict";
+/* =========================================================================
+   PDF Text Editor — self-contained, no dependencies, no network.
+   Strategy:
+     * Parse indirect objects by scanning the raw file.
+     * For each FlateDecode (or raw) content stream, inflate with the native
+       DecompressionStream, find Tj / TJ / ' / " string operands, and replace
+       the target text inside them only.
+     * Re-deflate with CompressionStream, rewrite the object with a direct
+       /Length, then append it as an INCREMENTAL UPDATE with a fresh classic
+       xref + trailer (/Prev -> old startxref). Everything else stays byte
+       identical, which is what preserves fonts and formatting.
+   ========================================================================= */
+
+const $ = id => document.getElementById(id);
+const els = {
+  drop:$('drop'), file:$('file'), fileMeta:$('fileMeta'),
+  find:$('find'), repl:$('repl'), cs:$('cs'), ww:$('ww'),
+  scanBtn:$('scanBtn'), applyBtn:$('applyBtn'), extractBtn:$('extractBtn'),
+  status:$('status'), log:$('log'), matchPanel:$('matchPanel'), matches:$('matches'),
+};
+
+let pdfBytes = null;     // Uint8Array of the loaded file
+let pdfName  = 'document.pdf';
+
+/* ---------- tiny logging ---------- */
+function log(msg, kind){
+  const t = new Date().toLocaleTimeString();
+  const prefix = kind === 'err' ? '✗ ' : kind === 'ok' ? '✓ ' : '· ';
+  els.log.textContent += `\n[${t}] ${prefix}${msg}`;
+  els.log.scrollTop = els.log.scrollHeight;
+}
+function setStatus(html){ els.status.innerHTML = html; }
+function clearLog(){ els.log.textContent = 'Ready.'; }
+
+/* ---------- byte <-> latin1 string helpers (index == byte offset) ---------- */
+function bytesToStr(bytes){
+  let s = ''; const CH = 0x8000;
+  for(let i=0;i<bytes.length;i+=CH) s += String.fromCharCode.apply(null, bytes.subarray(i, i+CH));
+  return s;
+}
+function strToBytes(str){
+  const b = new Uint8Array(str.length);
+  for(let i=0;i<str.length;i++) b[i] = str.charCodeAt(i) & 0xff;
+  return b;
+}
+function concatBytes(arrs){
+  let n = 0; for(const a of arrs) n += a.length;
+  const out = new Uint8Array(n); let o = 0;
+  for(const a of arrs){ out.set(a, o); o += a.length; }
+  return out;
+}
+
+/* ---------- native deflate / inflate ---------- */
+async function inflate(bytes){
+  let lastErr;
+  for(const fmt of ['deflate','deflate-raw']){
+    try{
+      const ds = new DecompressionStream(fmt);
+      const ab = await new Response(new Blob([bytes]).stream().pipeThrough(ds)).arrayBuffer();
+      return new Uint8Array(ab);
+    }catch(e){ lastErr = e; }
+  }
+  throw lastErr || new Error('inflate failed');
+}
+async function deflate(bytes){
+  const cs = new CompressionStream('deflate');
+  const ab = await new Response(new Blob([bytes]).stream().pipeThrough(cs)).arrayBuffer();
+  return new Uint8Array(ab);
+}
+
+/* =========================================================================
+   PDF object scanning
+   ========================================================================= */
+function scanObjects(str){
+  // returns array of {num, gen, start, dictStart, dictEnd, isStream,
+  //                   streamStart, streamEnd, end, raw}
+  const objs = [];
+  const re = /(\d+)\s+(\d+)\s+obj\b/g;
+  let m;
+  while((m = re.exec(str))){
+    const num = +m[1], gen = +m[2], start = m.index;
+    const endIdx = str.indexOf('endobj', m.index);
+    if(endIdx < 0) continue;
+    const body = str.slice(m.index + m[0].length, endIdx);
+    const sIdx = body.indexOf('stream');
+    let isStream=false, streamStart=-1, streamEnd=-1, dictEnd=endIdx;
+    if(sIdx >= 0){
+      isStream = true;
+      // stream data begins right after 'stream' + (CRLF | LF | CR)
+      let p = m.index + m[0].length + sIdx + 'stream'.length;
+      if(str[p]==='\r' && str[p+1]==='\n') p += 2;
+      else if(str[p]==='\n' || str[p]==='\r') p += 1;
+      streamStart = p;
+      let esIdx = str.indexOf('endstream', p);
+      if(esIdx < 0) esIdx = endIdx;
+      streamEnd = esIdx;
+      dictEnd = m.index + m[0].length + sIdx;
+    }
+    objs.push({
+      num, gen, start,
+      dictStart: m.index + m[0].length,
+      dictEnd, isStream, streamStart, streamEnd,
+      end: endIdx + 'endobj'.length,
+      dict: str.slice(m.index + m[0].length, dictEnd)
+    });
+    re.lastIndex = endIdx + 6;
+  }
+  return objs;
+}
+
+function dictHasFlate(dict){ return /\/Filter\s*(\/FlateDecode|\[[^\]]*\/FlateDecode)/.test(dict); }
+function dictHasOtherFilterOnly(dict){
+  const fm = dict.match(/\/Filter\s*(\/[A-Za-z0-9]+|\[[^\]]*\])/);
+  if(!fm) return false;
+  return !/FlateDecode/.test(fm[1]);
+}
+function dictHasPredictor(dict){
+  const p = dict.match(/\/Predictor\s+(\d+)/);
+  return p && +p[1] >= 2;
+}
+function looksLikeContent(text){
+  // content streams contain text/painting operators
+  return /\bBT\b|\bTj\b|\bTJ\b|\bTf\b|\bTd\b|\bTD\b/.test(text);
+}
+
+/* =========================================================================
+   PDF string-operand decode / encode
+   ========================================================================= */
+function decodeLiteral(s){
+  // s is the inside of a (...) literal; return decoded latin1 byte-string
+  let out = '';
+  for(let i=0;i<s.length;i++){
+    const c = s[i];
+    if(c === '\\'){
+      const n = s[i+1];
+      if(n === undefined){ break; }
+      if(n === 'n'){ out += '\n'; i++; }
+      else if(n === 'r'){ out += '\r'; i++; }
+      else if(n === 't'){ out += '\t'; i++; }
+      else if(n === 'b'){ out += '\b'; i++; }
+      else if(n === 'f'){ out += '\f'; i++; }
+      else if(n === '(' || n === ')' || n === '\\'){ out += n; i++; }
+      else if(n >= '0' && n <= '7'){
+        let oct = n; i++;
+        for(let k=0;k<2 && s[i+1] >= '0' && s[i+1] <= '7';k++){ oct += s[++i]; }
+        out += String.fromCharCode(parseInt(oct,8) & 0xff);
+      }
+      else if(n === '\r' || n === '\n'){ // line continuation
+        i++; if(n==='\r' && s[i+1]==='\n') i++;
+      }
+      else { out += n; i++; } // unknown escape -> literal char
+    } else {
+      out += c;
+    }
+  }
+  return out;
+}
+function encodeLiteral(bytestr){
+  let out = '';
+  for(let i=0;i<bytestr.length;i++){
+    const code = bytestr.charCodeAt(i) & 0xff;
+    const ch = bytestr[i];
+    if(ch === '(' || ch === ')' || ch === '\\') out += '\\' + ch;
+    else if(code < 32 || code > 126) out += '\\' + code.toString(8).padStart(3,'0');
+    else out += ch;
+  }
+  return out;
+}
+function decodeHex(s){
+  let h = s.replace(/[^0-9A-Fa-f]/g,'');
+  if(h.length % 2) h += '0';
+  let out = '';
+  for(let i=0;i<h.length;i+=2) out += String.fromCharCode(parseInt(h.substr(i,2),16));
+  return out;
+}
+function encodeHex(bytestr){
+  let out = '';
+  for(let i=0;i<bytestr.length;i++) out += (bytestr.charCodeAt(i)&0xff).toString(16).padStart(2,'0').toUpperCase();
+  return out;
+}
+
+/* =========================================================================
+   Replace inside a decoded content-stream string
+   Operates on string operands of Tj/TJ/'/". Returns {text, count, samples}
+   ========================================================================= */
+function buildMatcher(find, caseSensitive, wholeWord){
+  const esc = find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  let pat = esc;
+  if(wholeWord) pat = '(?<![A-Za-z0-9])' + pat + '(?![A-Za-z0-9])';
+  return new RegExp(pat, caseSensitive ? 'g' : 'gi');
+}
+
+function processContent(content, find, replace, opts){
+  // content: latin1 string of decompressed content stream
+  // Walk through and rewrite (...) and <...> string operands.
+  let out = '';
+  let i = 0;
+  let count = 0;
+  const samples = [];
+  const N = content.length;
+
+  function recordSample(decoded){
+    if(samples.length < 60){
+      const re = buildMatcher(find, opts.caseSensitive, opts.wholeWord);
+      const idx = decoded.search(re);
+      const from = Math.max(0, idx-22), to = Math.min(decoded.length, idx+find.length+22);
+      samples.push({
+        before: decoded.slice(from, idx),
+        hit: decoded.slice(idx, idx+find.length),
+        after: decoded.slice(idx+find.length, to)
+      });
+    }
+  }
+  function replaceIn(decoded){
+    const re = buildMatcher(find, opts.caseSensitive, opts.wholeWord);
+    let local = 0;
+    const res = decoded.replace(re, (mm)=>{ local++; return replace; });
+    if(local){ recordSample(decoded); count += local; }
+    return {res, local};
+  }
+
+  while(i < N){
+    const c = content[i];
+    if(c === '('){
+      // read balanced literal
+      let depth = 1, j = i+1, inner = '';
+      while(j < N && depth > 0){
+        const cc = content[j];
+        if(cc === '\\'){ inner += cc + (content[j+1]||''); j += 2; continue; }
+        if(cc === '('){ depth++; }
+        else if(cc === ')'){ depth--; if(depth===0){ break; } }
+        inner += cc; j++;
+      }
+      const decoded = decodeLiteral(inner);
+      const {res, local} = replaceIn(decoded);
+      out += local ? '(' + encodeLiteral(res) + ')' : '(' + inner + ')';
+      i = j + 1;
+    } else if(c === '<' && content[i+1] !== '<'){
+      // hex string
+      let j = i+1, inner = '';
+      while(j < N && content[j] !== '>'){ inner += content[j]; j++; }
+      const decoded = decodeHex(inner);
+      const {res, local} = replaceIn(decoded);
+      out += local ? '<' + encodeHex(res) + '>' : '<' + inner + '>';
+      i = j + 1;
+    } else if(c === '<' && content[i+1] === '<'){
+      out += '<<'; i += 2;
+    } else {
+      out += c; i++;
+    }
+  }
+  return {text: out, count, samples};
+}
+
+/* Extract plain text (for the "show editable text" view) */
+function extractText(content){
+  let out = [];
+  let i = 0; const N = content.length;
+  while(i < N){
+    const c = content[i];
+    if(c === '('){
+      let depth=1, j=i+1, inner='';
+      while(j<N && depth>0){
+        const cc = content[j];
+        if(cc==='\\'){ inner += cc + (content[j+1]||''); j+=2; continue; }
+        if(cc==='(') depth++;
+        else if(cc===')'){ depth--; if(depth===0) break; }
+        inner += cc; j++;
+      }
+      out.push(decodeLiteral(inner)); i = j+1;
+    } else if(c === '<' && content[i+1] !== '<'){
+      let j=i+1, inner='';
+      while(j<N && content[j] !== '>'){ inner += content[j]; j++; }
+      out.push(decodeHex(inner)); i = j+1;
+    } else if(c === '<' && content[i+1] === '<'){ i += 2; }
+    else i++;
+  }
+  return out.join('');
+}
+
+/* =========================================================================
+   Core: walk content streams, optionally replace.
+   mode: 'scan' | 'apply' | 'extract'
+   ========================================================================= */
+async function runOverContentStreams(mode, find, replace, opts){
+  const str = bytesToStr(pdfBytes);
+  const objs = scanObjects(str);
+  const result = {
+    streamsSeen:0, contentStreams:0, totalMatches:0, samples:[],
+    modified:[], skippedPredictor:0, skippedFilter:0, inflateFail:0,
+    extracted:[]
+  };
+
+  for(const o of objs){
+    if(!o.isStream) continue;
+    result.streamsSeen++;
+
+    if(dictHasOtherFilterOnly(o.dict)){ continue; } // images etc.
+    const flate = dictHasFlate(o.dict);
+
+    // pull raw stream bytes
+    let rawLen = o.streamEnd - o.streamStart;
+    // trim trailing EOL before 'endstream'
+    let endTrim = o.streamEnd;
+    if(str[endTrim-1]==='\n') endTrim--;
+    if(str[endTrim-1]==='\r') endTrim--;
+    const rawStr = str.slice(o.streamStart, endTrim);
+    let raw = strToBytes(rawStr);
+
+    let content;
+    if(flate){
+      if(dictHasPredictor(o.dict)){ result.skippedPredictor++; continue; }
+      try{ content = bytesToStr(await inflate(raw)); }
+      catch(e){ result.inflateFail++; continue; }
+    } else {
+      content = rawStr; // uncompressed content stream
+    }
+
+    if(!looksLikeContent(content)) continue;
+    result.contentStreams++;
+
+    if(mode === 'extract'){
+      const t = extractText(content).replace(/\s+/g,' ').trim();
+      if(t) result.extracted.push({num:o.num, text:t});
+      continue;
+    }
+
+    const { text, count, samples } = processContent(content, find, replace, opts);
+    if(count > 0){
+      result.totalMatches += count;
+      for(const s of samples){ if(result.samples.length < 80) result.samples.push(s); }
+      if(mode === 'apply'){
+        // re-encode object
+        const newContentBytes = strToBytes(text);
+        let newStreamBytes, newDict;
+        if(flate){
+          newStreamBytes = await deflate(newContentBytes);
+          newDict = setLength(stripPredictor(o.dict), newStreamBytes.length);
+        } else {
+          newStreamBytes = newContentBytes;
+          newDict = setLength(o.dict, newStreamBytes.length);
+        }
+        result.modified.push({ num:o.num, gen:o.gen, dict:newDict, stream:newStreamBytes });
+      }
+    }
+  }
+  return result;
+}
+
+function setLength(dict, len){
+  if(/\/Length\s+(\d+\s+\d+\s+R|\d+)/.test(dict))
+    return dict.replace(/\/Length\s+(?:\d+\s+\d+\s+R|\d+)/, '/Length ' + len);
+  // insert before final >>
+  return dict.replace(/>>\s*$/, ' /Length ' + len + ' >>');
+}
+function stripPredictor(dict){
+  return dict
+    .replace(/\/DecodeParms\s*<<[^>]*>>/g,'')
+    .replace(/\/DecodeParms\s+\d+\s+\d+\s+R/g,'');
+}
+
+/* =========================================================================
+   Build incremental update
+   ========================================================================= */
+function getTrailerInfo(str){
+  // find last startxref offset
+  let oldStartxref = null;
+  const sx = str.lastIndexOf('startxref');
+  if(sx >= 0){
+    const m = str.slice(sx).match(/startxref\s+(\d+)/);
+    if(m) oldStartxref = +m[1];
+  }
+  // Root + Size: prefer a classic trailer, else search whole file
+  let root = null, size = null;
+  const tIdx = str.lastIndexOf('trailer');
+  let scope = tIdx >= 0 ? str.slice(tIdx) : str;
+  let rm = scope.match(/\/Root\s+(\d+)\s+(\d+)\s+R/);
+  if(!rm) rm = str.match(/\/Root\s+(\d+)\s+(\d+)\s+R/g) && (()=>{ const all=[...str.matchAll(/\/Root\s+(\d+)\s+(\d+)\s+R/g)]; return all[all.length-1]; })();
+  if(rm) root = { num:+rm[1], gen:+rm[2] };
+  const allSize = [...str.matchAll(/\/Size\s+(\d+)/g)];
+  if(allSize.length) size = +allSize[allSize.length-1][1];
+  return { oldStartxref, root, size };
+}
+
+async function buildIncrementalUpdate(modified){
+  const baseStr = bytesToStr(pdfBytes);
+  const info = getTrailerInfo(baseStr);
+  if(!info.root) throw new Error('Could not locate /Root — unusual PDF structure.');
+  if(info.oldStartxref == null) throw new Error('Could not locate startxref.');
+
+  const parts = [pdfBytes];
+  let offset = pdfBytes.length;
+  // ensure base ends with newline
+  const lastByte = pdfBytes[pdfBytes.length-1];
+  if(lastByte !== 0x0a && lastByte !== 0x0d){ parts.push(strToBytes('\n')); offset += 1; }
+
+  const xrefEntries = []; // {num, gen, offset}
+  let maxNum = info.size ? info.size - 1 : 0;
+
+  for(const mo of modified){
+    const header = `${mo.num} ${mo.gen} obj\n`;
+    const dict = mo.dict.trim();
+    const objBytes = concatBytes([
+      strToBytes(header + dict + '\nstream\n'),
+      mo.stream,
+      strToBytes('\nendstream\nendobj\n')
+    ]);
+    xrefEntries.push({ num:mo.num, gen:mo.gen, offset });
+    parts.push(objBytes);
+    offset += objBytes.length;
+    if(mo.num > maxNum) maxNum = mo.num;
+  }
+
+  // classic xref (one subsection per object)
+  xrefEntries.sort((a,b)=>a.num-b.num);
+  let xref = 'xref\n';
+  for(const e of xrefEntries){
+    xref += `${e.num} 1\n`;
+    xref += `${String(e.offset).padStart(10,'0')} ${String(e.gen).padStart(5,'0')} n \n`;
+  }
+  const xrefOffset = offset;
+  const trailer =
+    `trailer\n<< /Size ${maxNum+1} /Root ${info.root.num} ${info.root.gen} R /Prev ${info.oldStartxref} >>\n` +
+    `startxref\n${xrefOffset}\n%%EOF\n`;
+  parts.push(strToBytes(xref + trailer));
+
+  return concatBytes(parts);
+}
+
+/* =========================================================================
+   UI wiring
+   ========================================================================= */
+function enableActions(on){
+  els.scanBtn.disabled = !on;
+  els.applyBtn.disabled = !on;
+  els.extractBtn.disabled = !on;
+}
+
+function loadFile(file){
+  if(!file) return;
+  if(!/pdf$/i.test(file.name) && file.type !== 'application/pdf'){
+    log('That does not look like a PDF.', 'err'); return;
+  }
+  const fr = new FileReader();
+  fr.onload = () => {
+    pdfBytes = new Uint8Array(fr.result);
+    pdfName = file.name;
+    const head = bytesToStr(pdfBytes.subarray(0, 8));
+    els.fileMeta.innerHTML =
+      `<span class="pill ${head.startsWith('%PDF-')?'good':'warn'}">${head.startsWith('%PDF-')?'PDF ok':'not %PDF?'}</span> ` +
+      `<strong>${file.name}</strong> — ${(file.size/1024).toFixed(0)} KB` +
+      (head.startsWith('%PDF-') ? ` (v${head.slice(5)})` : '');
+    clearLog();
+    log(`Loaded "${file.name}" (${pdfBytes.length} bytes).`, 'ok');
+    enableActions(true);
+    els.matchPanel.style.display = 'none';
+    setStatus('');
+  };
+  fr.onerror = () => log('Failed to read file.', 'err');
+  fr.readAsArrayBuffer(file);
+}
+
+els.drop.addEventListener('click', () => els.file.click());
+els.file.addEventListener('change', e => loadFile(e.target.files[0]));
+['dragenter','dragover'].forEach(ev => els.drop.addEventListener(ev, e => { e.preventDefault(); els.drop.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev => els.drop.addEventListener(ev, e => { e.preventDefault(); els.drop.classList.remove('drag'); }));
+els.drop.addEventListener('drop', e => { if(e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+
+function currentOpts(){ return { caseSensitive: els.cs.checked, wholeWord: els.ww.checked }; }
+
+function renderMatches(samples, totalMatches, find){
+  els.matchPanel.style.display = 'block';
+  if(!totalMatches){
+    els.matches.innerHTML = '<div class="empty">No matches found in the editable text layer. The text may be vector outlines or use a font encoding this tool can\'t read — try "Show all editable text" to see what\'s actually editable.</div>';
+    return;
+  }
+  let rows = samples.map(s =>
+    `<tr><td><code>…${escapeHtml(s.before)}<span class="hi">${escapeHtml(s.hit)}</span>${escapeHtml(s.after)}…</code></td></tr>`
+  ).join('');
+  els.matches.innerHTML =
+    `<table><thead><tr><th>Context (${totalMatches} match${totalMatches>1?'es':''} for “${escapeHtml(find)}”)</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function escapeHtml(s){ return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+els.scanBtn.addEventListener('click', async () => {
+  const find = els.find.value;
+  if(!find){ log('Enter the text to find.', 'err'); return; }
+  enableActions(false); setStatus('Scanning…');
+  try{
+    const r = await runOverContentStreams('scan', find, els.repl.value, currentOpts());
+    log(`Scanned ${r.contentStreams} content stream(s) of ${r.streamsSeen} total streams.`);
+    if(r.skippedPredictor) log(`${r.skippedPredictor} predictor-encoded stream(s) skipped.`);
+    if(r.inflateFail) log(`${r.inflateFail} stream(s) could not be inflated.`);
+    renderMatches(r.samples, r.totalMatches, find);
+    if(r.totalMatches){
+      setStatus(`<span class="pill good">${r.totalMatches} match(es)</span> Review below, then click “Replace &amp; download PDF”.`);
+      log(`Found ${r.totalMatches} match(es) for "${find}".`, 'ok');
+    } else {
+      setStatus('<span class="pill warn">No matches</span> Nothing to replace in the editable text layer.');
+      log(`No matches for "${find}".`, 'err');
+    }
+  }catch(e){ log('Scan error: ' + e.message, 'err'); }
+  enableActions(true);
+});
+
+els.applyBtn.addEventListener('click', async () => {
+  const find = els.find.value;
+  if(!find){ log('Enter the text to find.', 'err'); return; }
+  const replace = els.repl.value;
+  enableActions(false); setStatus('Replacing…');
+  try{
+    const r = await runOverContentStreams('apply', find, replace, currentOpts());
+    if(!r.totalMatches){
+      setStatus('<span class="pill warn">No matches</span> Nothing was changed.');
+      log(`No matches for "${find}" — file not modified.`, 'err');
+      enableActions(true); return;
+    }
+    log(`Replacing ${r.totalMatches} occurrence(s) across ${r.modified.length} stream(s)…`);
+    const outBytes = await buildIncrementalUpdate(r.modified);
+    downloadPdf(outBytes);
+    setStatus(`<span class="pill good">Done</span> Replaced ${r.totalMatches} occurrence(s). Download started.`);
+    log(`Wrote incremental update (+${outBytes.length - pdfBytes.length} bytes). Fonts & layout preserved.`, 'ok');
+  }catch(e){ log('Replace error: ' + e.message, 'err'); setStatus('<span class="pill bad">Error</span> ' + escapeHtml(e.message)); }
+  enableActions(true);
+});
+
+els.extractBtn.addEventListener('click', async () => {
+  enableActions(false); setStatus('Extracting text…');
+  try{
+    const r = await runOverContentStreams('extract');
+    els.matchPanel.style.display = 'block';
+    if(!r.extracted.length){
+      els.matches.innerHTML = '<div class="empty">No editable text found. This PDF\'s text is most likely vector outlines (converted to curves on export) — it cannot be edited as text.</div>';
+      setStatus('<span class="pill warn">No editable text</span>');
+    } else {
+      const rows = r.extracted.map(e =>
+        `<tr><td style="white-space:nowrap;color:var(--muted)">obj ${e.num}</td><td><code>${escapeHtml(e.text.slice(0,400))}${e.text.length>400?'…':''}</code></td></tr>`
+      ).join('');
+      els.matches.innerHTML = `<table><thead><tr><th>Object</th><th>Editable text (${r.extracted.length} stream(s))</th></tr></thead><tbody>${rows}</tbody></table>`;
+      setStatus(`<span class="pill good">${r.extracted.length} text stream(s)</span> This is the text you can find &amp; replace.`);
+    }
+    log(`Extracted text from ${r.extracted.length} content stream(s).`, 'ok');
+  }catch(e){ log('Extract error: ' + e.message, 'err'); }
+  enableActions(true);
+});
+
+function downloadPdf(bytes){
+  const base = pdfName.replace(/\.pdf$/i,'');
+  const blob = new Blob([bytes], {type:'application/pdf'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = base + '-edited.pdf';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+}
+
+/* feature check */
+if(typeof DecompressionStream === 'undefined' || typeof CompressionStream === 'undefined'){
+  log('This browser lacks CompressionStream/DecompressionStream. Use a recent Chrome, Edge, or Firefox.', 'err');
+  enableActions(false);
+}
+</script>
+</body>
+</html>
