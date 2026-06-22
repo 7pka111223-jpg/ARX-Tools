@@ -11,6 +11,7 @@ import nspell from 'nspell';
 import { processFile } from './processFile.js';
 import { spellCheckFile } from './spellCheckFile.js';
 import { ruleCheckFile } from './ruleCheckFile.js';
+import { annotateFile } from './annotateFile.js';
 
 // build.js injects `self.__DICTIONARY__ = { aff, dic }` (plain text strings
 // read from the dictionary-en package at build time) into the bundle before
@@ -31,6 +32,8 @@ self.onmessage = async (event) => {
       result = await spellCheckFile(fileName, pdfBytes, spellingConfig, getSpellInstance());
     } else if (mode === 'rules') {
       result = await ruleCheckFile(fileName, pdfBytes, rulesConfig);
+    } else if (mode === 'annotate') {
+      result = await annotateFile(fileName, pdfBytes, rulesConfig);
     } else {
       result = await processFile(fileName, pdfBytes, rulesConfig, getSpellInstance());
     }

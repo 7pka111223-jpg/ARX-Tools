@@ -1,35 +1,71 @@
-import { locateFieldsOnPage, scanPageForPattern } from './titleBlockLocator.js';
+import {
+  findPatternMatches,
+  longestLiteralStem,
+  findLabeledFieldOnPages,
+  findStemOnPages,
+  itemBox,
+} from './titleBlockLocator.js';
 import { escapeRegex } from './util.js';
 
-export function evaluateFieldRules(pages, fieldRules, region) {
+// A literal stem shorter than this is too generic to reliably locate a near
+// miss (e.g. a lone "-"), so we don't use it for annotation placement.
+const MIN_STEM_LENGTH = 3;
+
+// True if any text anywhere in the document satisfies the rule's pattern.
+// This is the whole check for a pattern rule: the value just has to exist
+// somewhere on the drawing, regardless of label or title-block position.
+function patternMatchesAnywhere(pages, pattern) {
+  return pages.some((p) => findPatternMatches(p, pattern).length > 0);
+}
+
+// When a pattern rule fails, try to point at the offending text so an
+// annotation can be attached to it: first the value next to a matching
+// label (if the rule has one), then any text that begins with the pattern's
+// fixed literal stem. Returns { text, box, page } or null if nothing
+// suitable is on the page.
+function locateNearMiss(pages, rule, siblingFields) {
+  if (rule.label) {
+    const labeled = findLabeledFieldOnPages(pages, rule, siblingFields);
+    if (labeled && labeled.value != null) {
+      return { text: labeled.value, box: labeled.box, page: labeled.page };
+    }
+  }
+  const stem = longestLiteralStem(rule.pattern);
+  if (stem.length >= MIN_STEM_LENGTH) {
+    const hit = findStemOnPages(pages, stem);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function fieldIssue(rule, miss) {
+  const base = { category: rule.category, severity: rule.severity, ruleId: rule.id };
+  if (miss && miss.text != null) {
+    return {
+      ...base,
+      foundText: miss.text,
+      page: miss.page ?? null,
+      box: miss.box,
+      message: `Field "${rule.label}" value "${miss.text}" does not match the required pattern`,
+    };
+  }
+  return { ...base, foundText: null, page: null, message: `Required field "${rule.label}" was not found on the drawing` };
+}
+
+export function evaluateFieldRules(pages, fieldRules) {
   const issues = [];
-  for (const p of pages) {
-    const fields = locateFieldsOnPage(p, fieldRules, region);
-    for (const rule of fieldRules) {
-      const result = fields[rule.id];
-      if (result.found && (!rule.pattern || result.valid)) continue;
-
-      // The label-based lookup above only finds a field whose exact label
-      // text sits inside the configured title-block region right next to
-      // the value. Real drawings vary - the title block isn't always in
-      // that region, and label wording differs - so before reporting a
-      // field as missing or invalid, fall back to scanning the WHOLE page
-      // for any text that satisfies the rule's pattern on its own.
-      if (rule.pattern && scanPageForPattern(p, rule.pattern) !== null) continue;
-
-      if (!result.found) {
-        issues.push({
-          category: rule.category, severity: rule.severity, ruleId: rule.id,
-          foundText: null, page: p.pageNumber,
-          message: `Missing required field "${rule.label}"`,
-        });
-      } else if (rule.pattern && !result.valid) {
-        issues.push({
-          category: rule.category, severity: rule.severity, ruleId: rule.id,
-          foundText: result.value, page: p.pageNumber,
-          message: `Field "${rule.label}" value "${result.value}" does not match expected format`,
-        });
-      }
+  for (const rule of fieldRules) {
+    if (rule.pattern) {
+      // The value must exist somewhere on the drawing - no label or region
+      // needed. Only when it's missing do we hunt for a near miss to flag.
+      if (patternMatchesAnywhere(pages, rule.pattern)) continue;
+      issues.push(fieldIssue(rule, locateNearMiss(pages, rule, fieldRules)));
+    } else {
+      // Presence-only rule (no pattern): confirm the label appears, with a
+      // value beside it, anywhere in the document.
+      const found = findLabeledFieldOnPages(pages, rule, fieldRules);
+      if (found && found.value != null) continue;
+      issues.push(fieldIssue(rule, null));
     }
   }
   return issues;
@@ -48,9 +84,11 @@ export function evaluateFormattingRules(pages, formattingRules) {
       const text = p.items.map((it) => it.text).join(' ');
       for (const match of text.matchAll(findRe)) {
         if (!validRe.test(match[0])) {
+          const item = p.items.find((it) => it.text && it.text.includes(match[0]));
           issues.push({
             category: 'formatting', severity: rule.severity || 'warn', ruleId: rule.id,
-            foundText: match[0], page: p.pageNumber, message: rule.message,
+            foundText: match[0], page: p.pageNumber, box: item ? itemBox(item) : undefined,
+            message: rule.message,
           });
         }
       }
@@ -59,45 +97,43 @@ export function evaluateFormattingRules(pages, formattingRules) {
   return issues;
 }
 
-export function evaluateProjectRules(pages, projectFields, region) {
-  const firstPage = pages[0];
-  if (!firstPage) return [];
-  const requiredFields = projectFields
+export function evaluateProjectRules(pages, projectFields) {
+  const required = projectFields
     .filter((f) => f.value)
-    .map((f) => ({ id: f.id, category: 'project', label: f.label, pattern: `^${escapeRegex(f.value)}$` }));
-  if (requiredFields.length === 0) return [];
+    .map((f) => ({
+      id: f.id,
+      category: 'project',
+      label: f.label,
+      pattern: `^${escapeRegex(f.value)}$`,
+      severity: 'error',
+      expected: f.value,
+    }));
+  if (required.length === 0) return [];
 
-  const fields = locateFieldsOnPage(firstPage, requiredFields, region);
   const issues = [];
-  for (const f of requiredFields) {
-    const result = fields[f.id];
-    if (!result.found || !result.valid) {
-      // Same fallback as evaluateFieldRules: the expected text might be on
-      // the page but outside the configured region, or not directly next
-      // to a recognized label, so check the whole page before giving up.
-      if (scanPageForPattern(firstPage, f.pattern) !== null) continue;
-      const original = projectFields.find((pf) => pf.id === f.id);
-      issues.push({
-        category: 'project', severity: 'error', ruleId: f.id,
-        foundText: result.value, page: firstPage.pageNumber,
-        message: `Project field "${f.label}" expected "${original.value}" but found "${result.value ?? '(missing)'}"`,
-      });
-    }
+  for (const f of required) {
+    if (patternMatchesAnywhere(pages, f.pattern)) continue;
+    const miss = locateNearMiss(pages, f, required);
+    issues.push({
+      category: 'project', severity: 'error', ruleId: f.id,
+      foundText: miss?.text ?? null, page: miss?.page ?? null, box: miss?.box,
+      message: `Project field "${f.label}" expected "${f.expected}" but found "${miss?.text ?? '(missing)'}"`,
+    });
   }
   return issues;
 }
 
 export function evaluateRules(pages, rulesConfig) {
-  const region = rulesConfig.titleBlockRegion;
   const enabledRules = rulesConfig.rules.filter((r) => r.enabled);
   const titleBlockRules = enabledRules.filter((r) => r.category === 'titleBlock');
   const revisionRules = enabledRules.filter((r) => r.category === 'revision');
   const formattingRules = enabledRules.filter((r) => r.category === 'formatting');
 
   return [
-    ...evaluateProjectRules(pages, rulesConfig.project, region),
-    ...evaluateFieldRules(pages, titleBlockRules, region),
-    ...evaluateFieldRules(pages, revisionRules, region),
+    ...evaluateProjectRules(pages, rulesConfig.project),
+    // titleBlock + revision share one pass so their labels disambiguate each
+    // other when locating a near miss for a failing rule.
+    ...evaluateFieldRules(pages, [...titleBlockRules, ...revisionRules]),
     ...evaluateFormattingRules(pages, formattingRules),
   ];
 }

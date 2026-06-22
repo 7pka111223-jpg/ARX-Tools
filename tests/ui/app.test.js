@@ -344,6 +344,64 @@ test('the rules check warns and does nothing when no files have been added', asy
   assert.equal(root.querySelectorAll('#rulesTable tbody tr').length, 0);
 });
 
+test('the annotate pass requests annotated bytes per file, downloads them, and reports a summary', async () => {
+  setupDom();
+  // downloadFile uses object URLs / an anchor click, which jsdom doesn't
+  // implement — stub them so the flow runs headlessly.
+  global.URL.createObjectURL = () => 'blob:stub';
+  global.URL.revokeObjectURL = () => {};
+  const downloaded = [];
+  global.document.createElement = ((orig) => (tag) => {
+    const el = orig.call(global.document, tag);
+    if (tag === 'a') el.click = () => downloaded.push(el.download);
+    return el;
+  })(global.document.createElement);
+
+  const root = document.getElementById('app');
+  const fakeWorker = {
+    postMessage(msg) {
+      let result;
+      if (msg.mode === 'annotate') {
+        result = msg.fileName === 'bad.pdf'
+          ? { fileName: msg.fileName, error: 'No text found — this PDF may be a scanned image, not a CAD export.', annotatedBytes: null, issueCount: 0 }
+          : { fileName: msg.fileName, error: null, annotatedBytes: new Uint8Array([37, 80, 68, 70]), issueCount: 2, errorCount: 1, warnCount: 1 };
+      } else {
+        // The initial full-check pass that records the file selection.
+        result = { fileName: msg.fileName, pass: true, issues: [], counts: { error: 0, warn: 0 } };
+      }
+      this.onmessage({ data: { jobId: msg.jobId, result } });
+    },
+    terminate() {},
+  };
+
+  const app = initApp(root, { createWorker: () => fakeWorker });
+  const ok = { name: 'good.pdf', arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) };
+  const bad = { name: 'bad.pdf', arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) };
+
+  await app.handleFiles([ok, bad]);
+  await app.handleAnnotate();
+
+  assert.deepEqual(downloaded, ['good-comments.pdf']);
+  const status = root.querySelector('#annotateStatus').textContent;
+  assert.match(status, /Added comments to 1 PDF\(s\)/);
+  assert.match(status, /Skipped 1/);
+  assert.match(status, /No text found/);
+});
+
+test('the annotate pass warns and does nothing when no files have been added', async () => {
+  setupDom();
+  const root = document.getElementById('app');
+  const app = initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
+
+  let alertMessage = null;
+  global.alert = (msg) => { alertMessage = msg; };
+
+  await app.handleAnnotate();
+
+  assert.equal(typeof alertMessage, 'string');
+  assert.ok(alertMessage.length > 0);
+});
+
 test('typing a pattern and a matching sample value shows a live "Matches" result', () => {
   setupDom();
   const root = document.getElementById('app');

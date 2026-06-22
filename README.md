@@ -74,14 +74,38 @@ message if the regex itself is invalid — all before you save the rule.
 
 ### How the checker finds title-block, revision, and project fields
 
-For each of these fields the checker first looks for the rule's **Label**
-(e.g. `DWG NO`) inside the configured title-block corner/size, and reads the
-value right next to it. Drawings vary, though — the title block isn't
-always in that corner, and the exact label wording on the page doesn't
-always match. So whenever that lookup can't find a field, or finds one that
-doesn't match its Pattern, the checker falls back to scanning the **whole
-page** for any text that satisfies the Pattern on its own, with no label or
-region required. A field is only reported missing/invalid if neither step
-finds a match. This is also why a precise Pattern (built from a real
-example, see above) matters: it's what the whole-page fallback checks
-against.
+For a rule that has a **Pattern**, the checker simply searches the entire
+drawing for any text that satisfies that Pattern — no label, title-block
+corner, or position is required. If you build a Pattern from the example
+`J2501-JPD-EBH-DG-20103` (variable part `20103`), the checker looks for the
+text `J2501-JPD-EBH-DG-` followed by exactly five digits *anywhere* on the
+page, and the field passes as long as such text exists. The value can be in
+its own box, sit right after a label like `DWG NO: J2501-JPD-EBH-DG-20103`,
+or be split across adjacent text — all of those match. The digit/letter
+counts are still exact: a six-digit number would *not* satisfy a five-digit
+Pattern, and the fixed prefix won't match in the middle of a longer word.
+
+Presence-only rules (a **Label** with no Pattern, e.g. `REV`) still pass as
+long as the label appears somewhere on the drawing with a value beside it.
+
+When a Pattern rule fails, the checker points the report (and the PDF
+comment, below) at the offending text: the value next to a matching label
+if there is one, otherwise any text that begins with the Pattern's fixed
+prefix.
+
+### Add comments to the PDFs
+
+In the **Rules check** card, **Download PDFs with comments** re-runs the
+rule checks and saves a copy of each drawing (`<name>-comments.pdf`) with
+every error and warning written onto it:
+
+- a coloured highlight box and a sticky **comment** are placed on the
+  offending text (red for errors, orange for warnings) — e.g. a drawing
+  number that doesn't match its rule gets a note saying so, attached right
+  at the number;
+- a field that is missing entirely (no text on the page satisfies its rule)
+  is listed as a stacked comment in the page's top-left corner.
+
+The comments are standard PDF text annotations, so they also appear in the
+comments/markup panel of Acrobat, Preview, and other PDF readers. Everything
+runs locally — the PDFs never leave your machine.

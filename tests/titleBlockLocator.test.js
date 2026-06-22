@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { locateFieldsOnPage, scanPageForPattern } from '../src/titleBlockLocator.js';
+import {
+  locateFieldsOnPage,
+  scanPageForPattern,
+  findPatternMatches,
+  longestLiteralStem,
+} from '../src/titleBlockLocator.js';
 
 const region = { corner: 'bottom-right', widthPct: 30, heightPct: 25 };
 
@@ -156,4 +161,35 @@ test('scanPageForPattern does not merge items from different visual lines', () =
   ]);
   const match = scanPageForPattern(p, '^J2501\\-JPD\\-EBH\\-DG\\-\\d{5}$');
   assert.equal(match, null);
+});
+
+// --- findPatternMatches: contains-search semantics + boundary guards ---
+
+test('findPatternMatches matches a value embedded with other text in one item', () => {
+  const p = page([{ text: 'DWG NO: J2501-JPD-EBH-DG-20103', x: 800, y: 700, width: 120, height: 10 }]);
+  const matches = findPatternMatches(p, '^J2501\\-JPD\\-EBH\\-DG\\-\\d{5}$');
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].text, 'J2501-JPD-EBH-DG-20103');
+  assert.equal(matches[0].box.x, 800);
+});
+
+test('findPatternMatches enforces the exact digit count from a $-anchored pattern', () => {
+  const six = page([{ text: 'J2501-JPD-EBH-DG-201030', x: 0, y: 0 }]);
+  const five = page([{ text: 'J2501-JPD-EBH-DG-20103', x: 0, y: 0 }]);
+  assert.equal(findPatternMatches(six, '^J2501\\-JPD\\-EBH\\-DG\\-\\d{5}$').length, 0);
+  assert.equal(findPatternMatches(five, '^J2501\\-JPD\\-EBH\\-DG\\-\\d{5}$').length, 1);
+});
+
+test('findPatternMatches does not match the literal prefix in the middle of a longer token', () => {
+  const p = page([{ text: 'XJ2501-JPD-EBH-DG-20103', x: 0, y: 0 }]);
+  assert.equal(findPatternMatches(p, '^J2501\\-JPD\\-EBH\\-DG\\-\\d{5}$').length, 0);
+});
+
+test('longestLiteralStem extracts the fixed prefix from a built pattern', () => {
+  assert.equal(longestLiteralStem('^J2501\\-JPD\\-EBH\\-DG\\-\\d{5}$'), 'J2501-JPD-EBH-DG-');
+});
+
+test('longestLiteralStem returns a short/empty stem when the pattern has no real literal run', () => {
+  assert.equal(longestLiteralStem('^[A-Z]{2}-\\d{3}$'), '-');
+  assert.equal(longestLiteralStem('.*'), '');
 });

@@ -27,7 +27,7 @@ test('issues content is correct for each synthetic case, independent of the ok f
   assert.equal(missingDwgNo.name, 'missing drawing number fails');
   const missingDwgNoIssue = missingDwgNo.issues.find((i) => i.ruleId === 'dwgNo');
   assert.ok(missingDwgNoIssue, JSON.stringify(missingDwgNo.issues, null, 2));
-  assert.ok(missingDwgNoIssue.message.includes('Missing'), missingDwgNoIssue.message);
+  assert.ok(missingDwgNoIssue.message.includes('not found'), missingDwgNoIssue.message);
 
   assert.equal(malformedDwgNo.name, 'malformed drawing number fails');
   const malformedDwgNoIssue = malformedDwgNo.issues.find((i) => i.ruleId === 'dwgNo');

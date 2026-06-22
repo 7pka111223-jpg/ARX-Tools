@@ -69,7 +69,10 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
       <div class="toolbar">
         <button id="exportRulesHtml" class="btn">Export rules report (HTML)</button>
         <button id="exportRulesCsv" class="btn">Export rules CSV</button>
+        <button id="annotatePdfs" class="btn">Download PDFs with comments</button>
       </div>
+      <progress id="annotateProgress" value="0" max="1"></progress>
+      <p id="annotateStatus" class="card__hint"></p>
     </section>
 
     <section class="card">
@@ -207,6 +210,9 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
   const checkRulesBtn = root.querySelector('#checkRules');
   const rulesProgress = root.querySelector('#rulesProgress');
   const rulesBody = root.querySelector('#rulesTable tbody');
+  const annotateBtn = root.querySelector('#annotatePdfs');
+  const annotateProgress = root.querySelector('#annotateProgress');
+  const annotateStatus = root.querySelector('#annotateStatus');
   const ruleList = root.querySelector('#ruleList');
   const ruleIdInput = root.querySelector('#ruleId');
   const ruleEditorTitle = root.querySelector('#ruleEditorTitle');
@@ -494,6 +500,58 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
     }
   }
 
+  // Re-runs the rule checks per file and downloads a copy of each PDF with
+  // every error/warning written onto it as a comment (a highlight box + a
+  // sticky note at the offending text, or stacked at the page corner when a
+  // field is missing entirely).
+  async function handleAnnotate() {
+    if (busy) {
+      alert('A batch is already being processed — please wait for it to finish.');
+      return;
+    }
+    if (lastFiles.length === 0) {
+      alert('Add PDF drawings first, then download the commented copies.');
+      return;
+    }
+    busy = true;
+    annotateBtn.disabled = true;
+    annotateStatus.textContent = '';
+    try {
+      annotateProgress.max = lastFiles.length || 1;
+      annotateProgress.value = 0;
+      const rulesConfig = store.getRules();
+      const worker = createWorker();
+      let annotated = 0;
+      const skipped = [];
+      try {
+        for (const file of lastFiles) {
+          const pdfBytes = new Uint8Array(await file.arrayBuffer());
+          const result = await new Promise((resolve) => {
+            worker.onmessage = (e) => {
+              if (e.data && e.data.jobId === file.name) resolve(e.data.result);
+            };
+            worker.postMessage({ mode: 'annotate', fileName: file.name, pdfBytes, rulesConfig, jobId: file.name }, [pdfBytes.buffer]);
+          });
+          if (result.annotatedBytes) {
+            downloadFile(commentedName(file.name), result.annotatedBytes, 'application/pdf');
+            annotated += 1;
+          } else {
+            skipped.push(`${file.name}: ${result.error || 'no annotations produced'}`);
+          }
+          annotateProgress.value += 1;
+        }
+      } finally {
+        worker.terminate();
+      }
+      const parts = [`Added comments to ${annotated} PDF(s).`];
+      if (skipped.length) parts.push(`Skipped ${skipped.length}: ${skipped.join('; ')}`);
+      annotateStatus.textContent = parts.join(' ');
+    } finally {
+      busy = false;
+      annotateBtn.disabled = false;
+    }
+  }
+
   fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
   dropZone.addEventListener('dragover', (e) => e.preventDefault());
   dropZone.addEventListener('dragenter', () => dropZone.classList.add('is-dragover'));
@@ -524,6 +582,7 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
   root.querySelector('#exportRulesCsv').addEventListener('click', () => {
     downloadFile('rules-check-report.csv', generateCsv(aggregateResults(ruleCheckResults)), 'text/csv');
   });
+  annotateBtn.addEventListener('click', () => handleAnnotate());
   root.querySelector('#runSelfTest').addEventListener('click', async () => {
     const { runSelfTest } = await import('../selfTest.js');
     const result = runSelfTest();
@@ -625,11 +684,18 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
     handleFiles,
     handleSpellCheck,
     handleRuleCheck,
+    handleAnnotate,
     refreshSummary,
     refreshSpelling,
     refreshRulesCheck,
     refreshRuleList,
   };
+}
+
+// "drawing.pdf" -> "drawing-comments.pdf" (keeps a ".pdf" extension even if
+// the original name had none).
+function commentedName(fileName) {
+  return fileName.replace(/\.pdf$/i, '') + '-comments.pdf';
 }
 
 function downloadFile(name, content, mime) {

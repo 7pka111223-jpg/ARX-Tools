@@ -59,7 +59,7 @@ test('evaluateFieldRules still reports missing when neither the label nor a whol
   const rules = [{ id: 'dwgNo', category: 'titleBlock', label: 'DWG NO', pattern: '^J2501\\-JPD\\-EBH\\-DG\\-\\d{5}$', severity: 'error' }];
   const issues = evaluateFieldRules(pages, rules, region);
   assert.equal(issues.length, 1);
-  assert.match(issues[0].message, /Missing required field/);
+  assert.match(issues[0].message, /was not found/);
 });
 
 test('evaluateFieldRules does not fall back to a whole-page scan for presence-only rules with no pattern', () => {
@@ -70,6 +70,57 @@ test('evaluateFieldRules does not fall back to a whole-page scan for presence-on
   const rules = [{ id: 'rev', category: 'revision', label: 'REV', severity: 'error' }];
   const issues = evaluateFieldRules(pages, rules, region);
   assert.equal(issues.length, 1);
+});
+
+test('evaluateFieldRules matches a value embedded next to its label in one text item', () => {
+  // The drawing number shares a single text item with its label - there is
+  // no standalone item that equals just the number - yet it should match.
+  const pages = [page([{ text: 'DWG NO: J2501-JPD-EBH-DG-20103', x: 800, y: 700 }])];
+  const rules = [{ id: 'dwgNo', category: 'titleBlock', label: 'DWG NO', pattern: '^J2501\\-JPD\\-EBH\\-DG\\-\\d{5}$', severity: 'error' }];
+  assert.equal(evaluateFieldRules(pages, rules).length, 0);
+});
+
+test('evaluateFieldRules enforces an exact digit count: a 6-digit number does not satisfy a 5-digit pattern', () => {
+  const pages = [page([{ text: 'J2501-JPD-EBH-DG-201030', x: 10, y: 10 }])];
+  const rules = [{ id: 'dwgNo', category: 'titleBlock', label: 'DWG NO', pattern: '^J2501\\-JPD\\-EBH\\-DG\\-\\d{5}$', severity: 'error' }];
+  const issues = evaluateFieldRules(pages, rules);
+  assert.equal(issues.length, 1);
+});
+
+test('evaluateFieldRules reports the labeled value as the offending text and carries its location', () => {
+  const pages = [page([{ text: 'DWG NO: 12345', x: 800, y: 700, width: 60, height: 10 }])];
+  const rules = [{ id: 'dwgNo', category: 'titleBlock', label: 'DWG NO', pattern: '^[A-Z]{2}-\\d{3}$', severity: 'error' }];
+  const issues = evaluateFieldRules(pages, rules);
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].foundText, '12345');
+  assert.equal(issues[0].page, 1);
+  assert.equal(issues[0].box.x, 800);
+});
+
+test('evaluateFieldRules locates a near miss by the pattern stem when there is no label', () => {
+  // No "DWG NO" label, and the number has too few digits, so the pattern
+  // doesn't match - but the fixed stem "J2501-JPD-EBH-DG-" still pins down
+  // the offending text so an annotation can be attached to it.
+  const pages = [page([{ text: 'J2501-JPD-EBH-DG-2000', x: 50, y: 60, width: 80, height: 9 }])];
+  const rules = [{ id: 'dwgNo', category: 'titleBlock', label: 'DWG NO', pattern: '^J2501\\-JPD\\-EBH\\-DG\\-\\d{5}$', severity: 'error' }];
+  const issues = evaluateFieldRules(pages, rules);
+  assert.equal(issues.length, 1);
+  assert.match(issues[0].foundText, /J2501-JPD-EBH-DG-2000/);
+  assert.equal(issues[0].box.x, 50);
+  assert.equal(issues[0].page, 1);
+});
+
+test('evaluateFormattingRules carries the location of the flagged text', () => {
+  const pages = [page([{ text: 'DATE: 1/2/26', x: 100, y: 120, width: 70, height: 10 }])];
+  const rules = [{
+    id: 'isoDate', category: 'formatting',
+    find: '\\b\\d{1,2}/\\d{1,2}/\\d{2,4}\\b', valid: '^\\d{4}-\\d{2}-\\d{2}$',
+    message: 'Use ISO date format (YYYY-MM-DD)', severity: 'warn', enabled: true,
+  }];
+  const issues = evaluateFormattingRules(pages, rules);
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].box.x, 100);
+  assert.equal(issues[0].page, 1);
 });
 
 test('evaluateFormattingRules flags tokens that match find but not valid', () => {
