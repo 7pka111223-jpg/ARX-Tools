@@ -180,7 +180,7 @@
     cursor: pointer;
   }
 
-  #progress, #spellProgress {
+  #progress, #spellProgress, #rulesProgress {
     width: 100%;
     height: 6px;
     border: none;
@@ -190,9 +190,9 @@
     appearance: none;
     background: var(--color-border);
   }
-  #progress::-webkit-progress-bar, #spellProgress::-webkit-progress-bar { background: var(--color-border); border-radius: 999px; }
-  #progress::-webkit-progress-value, #spellProgress::-webkit-progress-value { background: var(--color-primary); border-radius: 999px; transition: width 150ms ease; }
-  #progress::-moz-progress-bar, #spellProgress::-moz-progress-bar { background: var(--color-primary); border-radius: 999px; }
+  #progress::-webkit-progress-bar, #spellProgress::-webkit-progress-bar, #rulesProgress::-webkit-progress-bar { background: var(--color-border); border-radius: 999px; }
+  #progress::-webkit-progress-value, #spellProgress::-webkit-progress-value, #rulesProgress::-webkit-progress-value { background: var(--color-primary); border-radius: 999px; transition: width 150ms ease; }
+  #progress::-moz-progress-bar, #spellProgress::-moz-progress-bar, #rulesProgress::-moz-progress-bar { background: var(--color-primary); border-radius: 999px; }
 
   /* Buttons */
   .btn {
@@ -422,6 +422,82 @@
     border-top: 1px solid var(--color-border);
     margin: 16px 0;
   }
+
+  /* Pattern help: preset chips + live "try it" testers in the rule editor */
+  .pattern-help {
+    margin: -4px 0 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-muted);
+    font-size: 12.5px;
+    color: var(--color-text-secondary);
+  }
+  .pattern-help summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+  .pattern-help ul {
+    margin: 8px 0 0;
+    padding-left: 18px;
+  }
+  .pattern-help li { margin-bottom: 4px; }
+  .pattern-help code {
+    font-family: var(--font-mono);
+    background: var(--color-border);
+    padding: 1px 4px;
+    border-radius: 4px;
+  }
+
+  .preset-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 6px 0 10px;
+  }
+  .preset-chip {
+    appearance: none;
+    border: 1px solid var(--color-border-strong);
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    font-size: 11.5px;
+    font-weight: 550;
+    padding: 4px 9px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .preset-chip:hover { background: var(--color-primary-soft); border-color: var(--color-primary); color: var(--color-primary); }
+
+  .pattern-tester {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0 12px;
+  }
+  .pattern-tester input[type="text"] {
+    flex: 1 1 auto;
+    padding: 7px 10px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+  }
+  .test-result {
+    flex: 0 0 auto;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .test-result--ok { color: var(--color-success); }
+  .test-result--bad { color: var(--color-danger); }
+  .test-result--neutral { color: var(--color-text-tertiary); font-weight: 500; }
+  .format-test-matches {
+    margin: 0 0 12px;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+  }
+  .format-test-matches code { font-family: var(--font-mono); }
 </style>
 </head>
 <body>

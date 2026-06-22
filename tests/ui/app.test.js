@@ -297,3 +297,108 @@ test('handleFiles ignores a stray message with a mismatched jobId across multipl
   assert.ok(rows[1].textContent.includes('b.pdf'));
   assert.ok(rows[1].textContent.includes('PASS'));
 });
+
+test('the rules check runs a rules-only worker pass and renders the result independent of spelling', async () => {
+  setupDom();
+  const root = document.getElementById('app');
+
+  // A worker that branches on the message mode: a rules pass returns a
+  // failing result (so it's distinguishable from the full pass below).
+  const fakeWorker = {
+    postMessage(msg) {
+      const result = msg.mode === 'rules'
+        ? { fileName: msg.fileName, pass: false, issues: [{ category: 'titleBlock', severity: 'error', ruleId: 'dwgNo', foundText: 'ZZ-999', page: 1, message: 'bad' }], counts: { error: 1, warn: 0 } }
+        : { fileName: msg.fileName, pass: true, issues: [], counts: { error: 0, warn: 0 } };
+      this.onmessage({ data: { jobId: msg.jobId, result } });
+    },
+    terminate() {},
+  };
+
+  const app = initApp(root, { createWorker: () => fakeWorker });
+  const file = { name: 'a.pdf', arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) };
+
+  // The full pass records the file selection that the rules pass reuses.
+  await app.handleFiles([file]);
+  await app.handleRuleCheck();
+
+  const rulesTable = root.querySelector('#rulesTable');
+  assert.ok(rulesTable.textContent.includes('a.pdf'));
+  assert.ok(rulesTable.textContent.includes('FAIL'));
+  // The full-check summary table is untouched by the rules-only pass.
+  const summaryTable = root.querySelector('#summaryTable');
+  assert.ok(summaryTable.textContent.includes('PASS'));
+});
+
+test('the rules check warns and does nothing when no files have been added', async () => {
+  setupDom();
+  const root = document.getElementById('app');
+  const app = initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
+
+  let alertMessage = null;
+  global.alert = (msg) => { alertMessage = msg; };
+
+  await app.handleRuleCheck();
+
+  assert.equal(typeof alertMessage, 'string');
+  assert.ok(alertMessage.length > 0);
+  assert.equal(root.querySelectorAll('#rulesTable tbody tr').length, 0);
+});
+
+test('typing a pattern and a matching sample value shows a live "Matches" result', () => {
+  setupDom();
+  const root = document.getElementById('app');
+  initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
+
+  const pattern = root.querySelector('#rulePattern');
+  const value = root.querySelector('#patternTestValue');
+  pattern.value = '^[A-Z]{2}-\\d{3}$';
+  pattern.dispatchEvent(new window.Event('input'));
+  value.value = 'AB-123';
+  value.dispatchEvent(new window.Event('input'));
+
+  const result = root.querySelector('#patternTestResult');
+  assert.match(result.textContent, /Matches/);
+  assert.ok(!/Does not match/.test(result.textContent));
+});
+
+test('an invalid pattern regex shows an inline error in the live tester instead of throwing', () => {
+  setupDom();
+  const root = document.getElementById('app');
+  initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
+
+  const pattern = root.querySelector('#rulePattern');
+  const value = root.querySelector('#patternTestValue');
+  pattern.value = '(';
+  pattern.dispatchEvent(new window.Event('input'));
+  value.value = 'anything';
+  value.dispatchEvent(new window.Event('input'));
+
+  assert.match(root.querySelector('#patternTestResult').textContent, /Invalid regex/);
+});
+
+test('clicking a pattern preset chip fills the Pattern field and updates the live tester', () => {
+  setupDom();
+  const root = document.getElementById('app');
+  initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
+
+  root.querySelector('#patternTestValue').value = 'AB-123';
+  const chip = [...root.querySelectorAll('#patternPresets .preset-chip')].find((b) => b.textContent.includes('AB-123)'));
+  chip.dispatchEvent(new window.Event('click', { bubbles: true }));
+
+  assert.equal(root.querySelector('#rulePattern').value, '^[A-Z]{2}-\\d{3}$');
+  assert.match(root.querySelector('#patternTestResult').textContent, /Matches/);
+});
+
+test('clicking a format preset chip fills the Find/Valid fields and updates the live match list', () => {
+  setupDom();
+  const root = document.getElementById('app');
+  initApp(root, { createWorker: () => ({ postMessage() {}, terminate() {} }) });
+
+  root.querySelector('#formatTestValue').value = 'Issued 01/02/2024';
+  const chip = root.querySelector('#formatPresets .preset-chip');
+  chip.dispatchEvent(new window.Event('click', { bubbles: true }));
+
+  assert.equal(root.querySelector('#ruleFind').value, '\\d{1,2}/\\d{1,2}/\\d{2,4}');
+  assert.equal(root.querySelector('#ruleValid').value, '^\\d{4}-\\d{2}-\\d{2}$');
+  assert.ok(root.querySelector('#formatTestMatches').textContent.includes('01/02/2024'));
+});

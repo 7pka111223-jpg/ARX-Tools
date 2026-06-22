@@ -76,6 +76,24 @@ test('generateCsv quotes a field containing a bare carriage return', () => {
   assert.ok(csv.includes('"abc\rxyz"'), 'expected bare CR field to be quoted');
 });
 
+test('generateHtmlReport defaults to "Drawing Check Report" when no title is given', () => {
+  const html = generateHtmlReport(sampleAggregate());
+  assert.ok(html.includes('<h1>Drawing Check Report</h1>'));
+});
+
+test('generateHtmlReport uses a custom title in both <title> and <h1>', () => {
+  const html = generateHtmlReport(sampleAggregate(), 'Rules Check Report');
+  assert.ok(html.includes('<title>Rules Check Report</title>'));
+  assert.ok(html.includes('<h1>Rules Check Report</h1>'));
+  assert.ok(!html.includes('Drawing Check Report'));
+});
+
+test('generateHtmlReport escapes an html-unsafe custom title', () => {
+  const html = generateHtmlReport(sampleAggregate(), '<script>alert(1)</script>');
+  assert.ok(!html.includes('<script>alert(1)</script>'));
+  assert.ok(html.includes('&lt;script&gt;'));
+});
+
 test('generateHtmlReport escapes html-unsafe content', () => {
   const agg = aggregateResults([buildDrawingResult('<a>.pdf', [
     { category: 'spelling', severity: 'warn', ruleId: 'spelling', foundText: '<script>', page: 1, message: 'msg' },

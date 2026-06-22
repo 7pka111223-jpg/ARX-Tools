@@ -10,6 +10,7 @@ import 'pdfjs-dist/legacy/build/pdf.worker.mjs';
 import nspell from 'nspell';
 import { processFile } from './processFile.js';
 import { spellCheckFile } from './spellCheckFile.js';
+import { ruleCheckFile } from './ruleCheckFile.js';
 
 // build.js injects `self.__DICTIONARY__ = { aff, dic }` (plain text strings
 // read from the dictionary-en package at build time) into the bundle before
@@ -25,9 +26,14 @@ function getSpellInstance() {
 self.onmessage = async (event) => {
   const { mode, fileName, pdfBytes, rulesConfig, spellingConfig, jobId } = event.data;
   try {
-    const result = mode === 'spelling'
-      ? await spellCheckFile(fileName, pdfBytes, spellingConfig, getSpellInstance())
-      : await processFile(fileName, pdfBytes, rulesConfig, getSpellInstance());
+    let result;
+    if (mode === 'spelling') {
+      result = await spellCheckFile(fileName, pdfBytes, spellingConfig, getSpellInstance());
+    } else if (mode === 'rules') {
+      result = await ruleCheckFile(fileName, pdfBytes, rulesConfig);
+    } else {
+      result = await processFile(fileName, pdfBytes, rulesConfig, getSpellInstance());
+    }
     self.postMessage({ jobId, result });
   } catch (err) {
     self.postMessage({

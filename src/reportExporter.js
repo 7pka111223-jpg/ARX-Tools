@@ -28,7 +28,8 @@ export function generateCsv(aggregateResult) {
   return [header, ...rows].join('\n');
 }
 
-export function generateHtmlReport(aggregateResult) {
+export function generateHtmlReport(aggregateResult, title = 'Drawing Check Report') {
+  const safeTitle = escapeHtml(title);
   const summaryRows = aggregateResult.drawings
     .map(
       (d) => `<tr><td>${escapeHtml(d.fileName)}</td><td>${d.pass ? 'PASS' : 'FAIL'}</td><td>${d.counts.error}</td><td>${d.counts.warn}</td></tr>`
@@ -44,10 +45,10 @@ export function generateHtmlReport(aggregateResult) {
     )
     .join('');
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Drawing Check Report</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${safeTitle}</title>
 <style>body{font-family:sans-serif;margin:2rem}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:4px 8px;text-align:left}</style>
 </head><body>
-<h1>Drawing Check Report</h1>
+<h1>${safeTitle}</h1>
 <p>${aggregateResult.passed} / ${aggregateResult.total} passed</p>
 <table><thead><tr><th>File</th><th>Result</th><th>Errors</th><th>Warnings</th></tr></thead><tbody>${summaryRows}</tbody></table>
 <h2>Issues</h2>

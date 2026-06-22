@@ -2,14 +2,18 @@ import { createRulesStore, DEFAULT_RULES } from '../rulesStore.js';
 import { aggregateResults } from '../resultsModel.js';
 import { generateCsv, generateHtmlReport, generateSpellingCsv, generateSpellingHtmlReport } from '../reportExporter.js';
 import { renderSummaryRow, renderRuleRow, renderSpellingRows } from './render.js';
+import { testPattern, testFormat } from './patternTester.js';
+import { escapeHtml } from '../util.js';
 
 export function initApp(root, { createWorker = () => window.__createWorker() } = {}) {
   const store = createRulesStore(DEFAULT_RULES);
   let drawingResults = [];
   let spellingResults = [];
+  let ruleCheckResults = [];
   // Retain the File objects from the last selection so the standalone spelling
-  // check can re-read them (the full-check pass transfers each file's bytes to
-  // the worker, but the File objects themselves remain re-readable).
+  // and rules checks can re-read them (the full-check pass transfers each
+  // file's bytes to the worker, but the File objects themselves remain
+  // re-readable).
   let lastFiles = [];
   let busy = false;
 
@@ -53,6 +57,23 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
 
     <section class="card">
       <div class="card__header">
+        <h2 class="card__title">Rules check</h2>
+        <span class="card__hint">Run a dedicated title-block / revision / formatting pass, independent of spelling</span>
+      </div>
+      <button id="checkRules" class="btn btn-primary">Check rules</button>
+      <progress id="rulesProgress" value="0" max="1"></progress>
+      <table id="rulesTable">
+        <thead><tr><th>File</th><th>Result</th><th>Errors</th><th>Warnings</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="toolbar">
+        <button id="exportRulesHtml" class="btn">Export rules report (HTML)</button>
+        <button id="exportRulesCsv" class="btn">Export rules CSV</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card__header">
         <h2 class="card__title">Rules</h2>
         <span class="card__hint">Add, edit, or remove checks — no JSON editing required</span>
       </div>
@@ -91,10 +112,38 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
           <label for="ruleLabel">Label on drawing</label>
           <input type="text" id="ruleLabel" placeholder="e.g. DWG NO">
         </div>
+
+        <details class="pattern-help">
+          <summary>Need help writing a pattern?</summary>
+          <ul>
+            <li><code>^</code> and <code>$</code> anchor the start/end of the value — always include both so e.g. <code>AB-123-EXTRA</code> isn't wrongly accepted as <code>AB-123</code>.</li>
+            <li><code>[A-Z]</code> one uppercase letter; <code>[A-Z]{2}</code> exactly two uppercase letters.</li>
+            <li><code>\d</code> one digit; <code>\d{3}</code> exactly three digits; <code>\d+</code> one or more digits.</li>
+            <li><code>-</code> a literal hyphen between parts (e.g. between the prefix and the number).</li>
+            <li><code>.*</code> matches anything — use it when a field just needs to be non-empty.</li>
+            <li><strong>Pattern</strong> (titleBlock / revision / project): the value found on the drawing must match this whole pattern.</li>
+            <li><strong>Find / Valid</strong> (formatting): <em>Find</em> locates candidate text anywhere on the drawing (e.g. anything that looks like a date); <em>Valid</em> says which of those finds are acceptable — anything found that doesn't match Valid gets flagged.</li>
+          </ul>
+        </details>
+
         <div class="field">
           <label for="rulePattern">Pattern <span class="field-hint">(titleBlock / revision — exact value must match)</span></label>
           <input type="text" id="rulePattern" placeholder="^[A-Z]{2}-\\d{3}$">
         </div>
+        <div class="preset-row" id="patternPresets">
+          <button type="button" class="preset-chip" data-pattern="^[A-Z]{2}-\\d{3}$">Drawing no. (AB-123)</button>
+          <button type="button" class="preset-chip" data-pattern="^[A-Z]{2}-\\d{4}$">Drawing no. (AB-1234)</button>
+          <button type="button" class="preset-chip" data-pattern="^[A-Z]$">Revision letter (A)</button>
+          <button type="button" class="preset-chip" data-pattern="^\\d+$">Revision number (1)</button>
+          <button type="button" class="preset-chip" data-pattern="^\\d{4}-\\d{2}-\\d{2}$">ISO date (2024-01-15)</button>
+          <button type="button" class="preset-chip" data-pattern="^[A-Z]{2,3}$">Initials (JS)</button>
+          <button type="button" class="preset-chip" data-pattern=".*">Any non-empty value</button>
+        </div>
+        <div class="pattern-tester">
+          <input type="text" id="patternTestValue" placeholder="Try it: type a sample value, e.g. AB-123">
+          <span id="patternTestResult" class="test-result"></span>
+        </div>
+
         <div class="field-row">
           <div class="field">
             <label for="ruleFind">Find regex <span class="field-hint">(formatting)</span></label>
@@ -105,6 +154,14 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
             <input type="text" id="ruleValid" placeholder="^\\d{4}-\\d{2}-\\d{2}$">
           </div>
         </div>
+        <div class="preset-row" id="formatPresets">
+          <button type="button" class="preset-chip" data-find="\\d{1,2}/\\d{1,2}/\\d{2,4}" data-valid="^\\d{4}-\\d{2}-\\d{2}$">US date → ISO</button>
+        </div>
+        <div class="pattern-tester">
+          <input type="text" id="formatTestValue" placeholder="Try it: type a sample line, e.g. Issued 01/02/2024">
+        </div>
+        <p id="formatTestMatches" class="format-test-matches"></p>
+
         <div class="field">
           <label for="ruleMessage">Message shown when this rule fails</label>
           <input type="text" id="ruleMessage" placeholder="e.g. Use ISO date format (YYYY-MM-DD)">
@@ -131,9 +188,19 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
   const checkSpellingBtn = root.querySelector('#checkSpelling');
   const spellProgress = root.querySelector('#spellProgress');
   const spellBody = root.querySelector('#spellTable tbody');
+  const checkRulesBtn = root.querySelector('#checkRules');
+  const rulesProgress = root.querySelector('#rulesProgress');
+  const rulesBody = root.querySelector('#rulesTable tbody');
   const ruleList = root.querySelector('#ruleList');
   const ruleIdInput = root.querySelector('#ruleId');
   const ruleEditorTitle = root.querySelector('#ruleEditorTitle');
+  const rulePatternInput = root.querySelector('#rulePattern');
+  const ruleFindInput = root.querySelector('#ruleFind');
+  const ruleValidInput = root.querySelector('#ruleValid');
+  const patternTestValue = root.querySelector('#patternTestValue');
+  const patternTestResult = root.querySelector('#patternTestResult');
+  const formatTestValue = root.querySelector('#formatTestValue');
+  const formatTestMatches = root.querySelector('#formatTestMatches');
 
   // Tracks which existing rule the editor is currently modifying.
   // null means the editor is in "add a new rule" mode.
@@ -160,6 +227,10 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
     root.querySelector('#ruleMessage').value = '';
     root.querySelector('#ruleSeverity').value = 'error';
     root.querySelector('#ruleEnabled').checked = true;
+    patternTestValue.value = '';
+    formatTestValue.value = '';
+    refreshPatternTest();
+    refreshFormatTest();
   }
 
   function setEditMode(rule) {
@@ -175,6 +246,10 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
     root.querySelector('#ruleMessage').value = rule.message || '';
     root.querySelector('#ruleSeverity').value = rule.severity;
     root.querySelector('#ruleEnabled').checked = rule.enabled;
+    patternTestValue.value = '';
+    formatTestValue.value = '';
+    refreshPatternTest();
+    refreshFormatTest();
     if (typeof root.querySelector('#ruleEditor').scrollIntoView === 'function') {
       root.querySelector('#ruleEditor').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
@@ -186,6 +261,63 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
 
   function refreshSpelling() {
     spellBody.innerHTML = spellingResults.map(renderSpellingRows).join('');
+  }
+
+  function refreshRulesCheck() {
+    rulesBody.innerHTML = ruleCheckResults.map(renderSummaryRow).join('');
+  }
+
+  // Live "try it" feedback for the Pattern field, re-run on every keystroke in
+  // either the pattern itself or the sample value (see patternTester.js).
+  function refreshPatternTest() {
+    const pattern = rulePatternInput.value;
+    const value = patternTestValue.value;
+    if (!pattern) {
+      patternTestResult.textContent = '';
+      patternTestResult.className = 'test-result';
+      return;
+    }
+    if (!value) {
+      patternTestResult.textContent = 'Type a sample value above to test it';
+      patternTestResult.className = 'test-result test-result--neutral';
+      return;
+    }
+    const { ok, error } = testPattern(pattern, value);
+    if (error) {
+      patternTestResult.textContent = `Invalid regex: ${error}`;
+      patternTestResult.className = 'test-result test-result--bad';
+    } else {
+      patternTestResult.textContent = ok ? '✓ Matches' : '✗ Does not match';
+      patternTestResult.className = `test-result ${ok ? 'test-result--ok' : 'test-result--bad'}`;
+    }
+  }
+
+  // Live "try it" feedback for the Find/Valid pair, showing every substring
+  // Find would flag plus whether Valid would accept it (see patternTester.js).
+  function refreshFormatTest() {
+    const find = ruleFindInput.value;
+    const valid = ruleValidInput.value;
+    const text = formatTestValue.value;
+    if (!find || !valid) {
+      formatTestMatches.innerHTML = '';
+      return;
+    }
+    if (!text) {
+      formatTestMatches.innerHTML = '<span class="test-result test-result--neutral">Type a sample line above to test it</span>';
+      return;
+    }
+    const { matches, error } = testFormat(find, valid, text);
+    if (error) {
+      formatTestMatches.innerHTML = `<span class="test-result test-result--bad">Invalid regex: ${escapeHtml(error)}</span>`;
+      return;
+    }
+    if (matches.length === 0) {
+      formatTestMatches.innerHTML = '<span class="test-result test-result--neutral">No matches found in that sample</span>';
+      return;
+    }
+    formatTestMatches.innerHTML = matches
+      .map((m) => `<code class="${m.ok ? 'test-result--ok' : 'test-result--bad'}">${escapeHtml(m.text)}</code>`)
+      .join(' ');
   }
 
   async function handleFiles(files) {
@@ -268,6 +400,47 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
     }
   }
 
+  async function handleRuleCheck() {
+    if (busy) {
+      alert('A batch is already being processed — please wait for it to finish.');
+      return;
+    }
+    if (lastFiles.length === 0) {
+      alert('Add PDF drawings first, then run the rules check.');
+      return;
+    }
+    busy = true;
+    checkRulesBtn.disabled = true;
+    try {
+      rulesProgress.max = lastFiles.length || 1;
+      rulesProgress.value = 0;
+      ruleCheckResults = [];
+      const rulesConfig = store.getRules();
+      const worker = createWorker();
+      try {
+        for (const file of lastFiles) {
+          const pdfBytes = new Uint8Array(await file.arrayBuffer());
+          const result = await new Promise((resolve) => {
+            worker.onmessage = (e) => {
+              if (e.data && e.data.jobId === file.name) {
+                resolve(e.data.result);
+              }
+            };
+            worker.postMessage({ mode: 'rules', fileName: file.name, pdfBytes, rulesConfig, jobId: file.name }, [pdfBytes.buffer]);
+          });
+          ruleCheckResults.push(result);
+          rulesProgress.value += 1;
+          refreshRulesCheck();
+        }
+      } finally {
+        worker.terminate();
+      }
+    } finally {
+      busy = false;
+      checkRulesBtn.disabled = false;
+    }
+  }
+
   fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
   dropZone.addEventListener('dragover', (e) => e.preventDefault());
   dropZone.addEventListener('dragenter', () => dropZone.classList.add('is-dragover'));
@@ -290,6 +463,13 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
   });
   root.querySelector('#exportSpellCsv').addEventListener('click', () => {
     downloadFile('spelling-report.csv', generateSpellingCsv(spellingResults), 'text/csv');
+  });
+  checkRulesBtn.addEventListener('click', () => handleRuleCheck());
+  root.querySelector('#exportRulesHtml').addEventListener('click', () => {
+    downloadFile('rules-check-report.html', generateHtmlReport(aggregateResults(ruleCheckResults), 'Rules Check Report'), 'text/html');
+  });
+  root.querySelector('#exportRulesCsv').addEventListener('click', () => {
+    downloadFile('rules-check-report.csv', generateCsv(aggregateResults(ruleCheckResults)), 'text/csv');
   });
   root.querySelector('#runSelfTest').addEventListener('click', async () => {
     const { runSelfTest } = await import('../selfTest.js');
@@ -361,7 +541,36 @@ export function initApp(root, { createWorker = () => window.__createWorker() } =
     refreshRuleList();
   });
 
-  return { store, handleFiles, handleSpellCheck, refreshSummary, refreshSpelling, refreshRuleList };
+  [rulePatternInput, patternTestValue].forEach((el) => el.addEventListener('input', refreshPatternTest));
+  [ruleFindInput, ruleValidInput, formatTestValue].forEach((el) => el.addEventListener('input', refreshFormatTest));
+
+  root.querySelector('#patternPresets').addEventListener('click', (e) => {
+    const chip = e.target.closest('.preset-chip');
+    if (!chip) return;
+    rulePatternInput.value = chip.dataset.pattern;
+    rulePatternInput.focus();
+    refreshPatternTest();
+  });
+
+  root.querySelector('#formatPresets').addEventListener('click', (e) => {
+    const chip = e.target.closest('.preset-chip');
+    if (!chip) return;
+    ruleFindInput.value = chip.dataset.find;
+    ruleValidInput.value = chip.dataset.valid;
+    ruleFindInput.focus();
+    refreshFormatTest();
+  });
+
+  return {
+    store,
+    handleFiles,
+    handleSpellCheck,
+    handleRuleCheck,
+    refreshSummary,
+    refreshSpelling,
+    refreshRulesCheck,
+    refreshRuleList,
+  };
 }
 
 function downloadFile(name, content, mime) {
