@@ -57,7 +57,20 @@ function embed(htmlText) {
   return JSON.stringify(htmlText).replace(/<\/script/gi, '<\\/script');
 }
 
-const checkerHtml = readFileSync('dist/drawing-checker.html', 'utf8');
+// Injected into an embedded tool so its blob/data download anchors are routed
+// through the host's chosen save folder. Patches anchor .click(); no-op when
+// the tool runs standalone (no __saveOutputFile on the parent).
+const SAVE_SHIM = '<script>(function(){try{if(!(window.parent&&window.parent!==window&&typeof window.parent.__saveOutputFile==="function"))return;var oc=HTMLAnchorElement.prototype.click;HTMLAnchorElement.prototype.click=function(){try{var href=this.getAttribute("href")||"";var name=this.getAttribute("download");if(name&&(href.indexOf("blob:")===0||href.indexOf("data:")===0)){fetch(href).then(function(r){return r.blob();}).then(function(b){window.parent.__saveOutputFile(name,b,b.type||"application/octet-stream");});return;}}catch(e){}return oc.apply(this,arguments);};}catch(e){}})();<\/script>';
+function withSaveShim(htmlText) {
+  return /<body[^>]*>/i.test(htmlText)
+    ? htmlText.replace(/<body[^>]*>/i, m => m + '\n' + SAVE_SHIM)
+    : SAVE_SHIM + htmlText;
+}
+
+// The Drawing Checker tab uses the maintained standalone build in vendor/
+// (full spell-checker). The freshly built dist/drawing-checker.html above is
+// still produced for standalone use and the build test.
+const checkerHtml = withSaveShim(readFileSync('vendor/drawing-checker.html', 'utf8'));
 const editorHtml = readFileSync('pdf-text-editor.html', 'utf8');
 const arxTemplate = readFileSync('arx.template.html', 'utf8');
 const arxHtml = arxTemplate

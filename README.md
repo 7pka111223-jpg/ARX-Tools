@@ -48,3 +48,27 @@ and exported files are written (using the browser's File System Access API in
 Chrome/Edge); when no folder is chosen, files go to the browser's normal
 Downloads folder. Open `dist/arx-tools.html` directly in a browser — no
 install or internet connection required.
+
+The Drawing Checker tab embeds the maintained standalone build in
+`vendor/drawing-checker.html` (the full spell-checking version). The
+`src/`-based build is still produced as `dist/drawing-checker.html` for
+standalone use and the build test.
+
+### Editor text engine
+
+The PDF Text Editor resolves text through several layers so it can find words
+that simple scanners miss:
+
+* **Robust object parsing** — streams are delimited by `/Length` and balanced
+  dictionaries, so compressed content whose binary happens to contain
+  `endstream`/`endobj` is parsed correctly (a common cause of "text not
+  found").
+* **Filter chains** — `FlateDecode`, `LZWDecode`, `ASCII85Decode`,
+  `ASCIIHexDecode`, `RunLengthDecode` and PNG/TIFF predictors, in any
+  combination.
+* **Kerned runs** — words split across `TJ` array fragments or consecutive
+  show operators are reconstructed before matching.
+* **Font encodings** — text is decoded to Unicode via `/ToUnicode` CMaps and
+  `/Encoding` `/Differences`, so subset and CID/Type0 fonts can be searched.
+  Replacement is applied when the font can represent the new characters and is
+  reported as "found but not replaceable" otherwise.
