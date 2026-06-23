@@ -319,7 +319,15 @@ function encodeHex(bytestr){
 }
 
 /* =========================================================================
-   Replace inside content-stream string operands
+   Content-stream tokenizer + run-aware find / replace.
+
+   Real-world drawings split one visible word across several string fragments
+   for kerning, e.g.  [(Eng)-15(ineer)4(ing)] TJ  shows "Engineering". Matching
+   each fragment in isolation misses such words. So we tokenize the stream,
+   group consecutive text-showing operators (TJ arrays and Tj/'/" strings that
+   are separated only by whitespace — i.e. the same visual run), reconstruct
+   the run's logical text, find/replace there, then redistribute the result
+   back into the original fragments (keeping each fragment's font/position).
    ========================================================================= */
 function buildMatcher(find, caseSensitive, wholeWord){
   const esc = find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -328,87 +336,148 @@ function buildMatcher(find, caseSensitive, wholeWord){
   return new RegExp(pat, caseSensitive ? 'g' : 'gi');
 }
 
-function processContent(content, find, replace, opts){
-  let out = '';
-  let i = 0;
-  let count = 0;
-  const samples = [];
-  const N = content.length;
+const isWS = c => c===' '||c==='\t'||c==='\r'||c==='\n'||c==='\f'||c==='\0';
+const isDelim = c => c==='('||c===')'||c==='<'||c==='>'||c==='['||c===']'||c==='{'||c==='}'||c==='/'||c==='%';
 
-  function recordSample(decoded){
-    if(samples.length < 60){
-      const re = buildMatcher(find, opts.caseSensitive, opts.wholeWord);
-      const idx = decoded.search(re);
-      const from = Math.max(0, idx-22), to = Math.min(decoded.length, idx+find.length+22);
-      samples.push({
-        before: decoded.slice(from, idx),
-        hit: decoded.slice(idx, idx+find.length),
-        after: decoded.slice(idx+find.length, to)
-      });
-    }
-  }
-  function replaceIn(decoded){
-    const re = buildMatcher(find, opts.caseSensitive, opts.wholeWord);
-    let local = 0;
-    const res = decoded.replace(re, ()=>{ local++; return replace; });
-    if(local){ recordSample(decoded); count += local; }
-    return {res, local};
-  }
-
+// Lossless tokenizer: every character belongs to exactly one token's `raw`,
+// so joining all raws reproduces the input byte-for-byte.
+function tokenize(s){
+  const toks = []; let i = 0; const N = s.length;
   while(i < N){
-    const c = content[i];
+    const c = s[i];
+    if(isWS(c)){ let j=i+1; while(j<N && isWS(s[j])) j++; toks.push({t:'ws', raw:s.slice(i,j)}); i=j; continue; }
+    if(c === '%'){ let j=i+1; while(j<N && s[j]!=='\n' && s[j]!=='\r') j++; toks.push({t:'comment', raw:s.slice(i,j)}); i=j; continue; }
     if(c === '('){
-      let depth = 1, j = i+1, inner = '';
-      while(j < N && depth > 0){
-        const cc = content[j];
-        if(cc === '\\'){ inner += cc + (content[j+1]||''); j += 2; continue; }
-        if(cc === '('){ depth++; }
-        else if(cc === ')'){ depth--; if(depth===0){ break; } }
-        inner += cc; j++;
-      }
-      const decoded = decodeLiteral(inner);
-      const {res, local} = replaceIn(decoded);
-      out += local ? '(' + encodeLiteral(res) + ')' : '(' + inner + ')';
-      i = j + 1;
-    } else if(c === '<' && content[i+1] !== '<'){
-      let j = i+1, inner = '';
-      while(j < N && content[j] !== '>'){ inner += content[j]; j++; }
-      const decoded = decodeHex(inner);
-      const {res, local} = replaceIn(decoded);
-      out += local ? '<' + encodeHex(res) + '>' : '<' + inner + '>';
-      i = j + 1;
-    } else if(c === '<' && content[i+1] === '<'){
-      out += '<<'; i += 2;
-    } else {
-      out += c; i++;
+      let depth=1, j=i+1;
+      while(j<N && depth>0){ const cc=s[j]; if(cc==='\\'){ j+=2; continue; } if(cc==='(') depth++; else if(cc===')'){ depth--; if(depth===0){ j++; break; } } j++; }
+      toks.push({t:'str', kind:'lit', raw:s.slice(i,j)}); i=j; continue;
     }
+    if(c === '<' && s[i+1] === '<'){ toks.push({t:'op', raw:'<<'}); i+=2; continue; }
+    if(c === '>' && s[i+1] === '>'){ toks.push({t:'op', raw:'>>'}); i+=2; continue; }
+    if(c === '<'){ let j=i+1; while(j<N && s[j]!=='>') j++; if(j<N) j++; toks.push({t:'str', kind:'hex', raw:s.slice(i,j)}); i=j; continue; }
+    if(c === '['){ toks.push({t:'arr-open', raw:'['}); i++; continue; }
+    if(c === ']'){ toks.push({t:'arr-close', raw:']'}); i++; continue; }
+    if(c === '/'){ let j=i+1; while(j<N && !isWS(s[j]) && !isDelim(s[j])) j++; toks.push({t:'name', raw:s.slice(i,j)}); i=j; continue; }
+    let j=i; while(j<N && !isWS(s[j]) && !isDelim(s[j])) j++;
+    if(j===i){ toks.push({t:'op', raw:s[i]}); i++; continue; } // stray delimiter, e.g. } )
+    const v = s.slice(i,j);
+    toks.push({t: /^[+-]?(\d+\.?\d*|\.\d+)$/.test(v) ? 'num' : 'op', raw:v});
+    i=j;
   }
-  return {text: out, count, samples};
+  return toks;
 }
 
-function extractText(content){
-  let out = [];
-  let i = 0; const N = content.length;
+function strInner(tok){ return tok.raw.slice(1, -1); }
+function decodeStr(tok){ return tok.kind==='hex' ? decodeHex(strInner(tok)) : decodeLiteral(strInner(tok)); }
+function encodeStr(kind, text){ return kind==='hex' ? '<'+encodeHex(text)+'>' : '('+encodeLiteral(text)+')'; }
+
+function skipWs(toks, p){ while(p<toks.length && (toks[p].t==='ws' || toks[p].t==='comment')) p++; return p; }
+
+// If a text-show operation starts at token index p, return its operand string
+// token indices and the index of its operator token; otherwise null.
+function matchShowAt(toks, p){
+  const t = toks[p];
+  if(!t) return null;
+  if(t.t === 'str'){
+    const op = skipWs(toks, p+1);
+    const o = toks[op];
+    if(o && o.t==='op' && (o.raw==='Tj' || o.raw==="'" || o.raw==='"')) return { strIdx:[p], endIdx:op };
+    return null;
+  }
+  if(t.t === 'arr-open'){
+    let q=p+1, depth=1;
+    while(q<toks.length && depth>0){ if(toks[q].t==='arr-open') depth++; else if(toks[q].t==='arr-close'){ depth--; if(depth===0) break; } q++; }
+    const op = skipWs(toks, q+1);
+    const o = toks[op];
+    if(o && o.t==='op' && o.raw==='TJ'){
+      const strIdx = [];
+      for(let k=p+1;k<q;k++) if(toks[k].t==='str') strIdx.push(k);
+      return { strIdx, endIdx:op };
+    }
+    return null;
+  }
+  return null;
+}
+
+// Replace across a list of decoded fragment strings; redistribute so each
+// match's replacement is anchored in the fragment where the match starts.
+function replaceAcrossFragments(fragTexts, find, replace, opts){
+  const bounds = []; let L = '';
+  for(const t of fragTexts){ bounds.push([L.length, L.length+t.length]); L += t; }
+  const re = buildMatcher(find, opts.caseSensitive, opts.wholeWord);
+  const matches = []; let m;
+  while((m = re.exec(L))){ matches.push({ s:m.index, e:m.index+m[0].length }); if(m.index === re.lastIndex) re.lastIndex++; }
+  if(!matches.length) return { texts:fragTexts, count:0, L, matches };
+
+  const fragAt = p => { for(let k=0;k<bounds.length;k++){ if(p>=bounds[k][0] && p<bounds[k][1]) return k; } return Math.max(0, bounds.length-1); };
+  const newTexts = fragTexts.map(()=> '');
+  let pos = 0, mi = 0;
+  while(pos < L.length){
+    if(mi < matches.length && pos === matches[mi].s){
+      newTexts[fragAt(pos)] += replace;
+      pos = matches[mi].e; mi++;
+    } else {
+      newTexts[fragAt(pos)] += L[pos];
+      pos++;
+    }
+  }
+  // handle zero-length trailing matches (rare) — ignore safely
+  return { texts:newTexts, count:matches.length, L, matches };
+}
+
+function processContent(content, find, replace, opts){
+  const toks = tokenize(content);
+  let count = 0;
+  const samples = [];
+  const N = toks.length;
+
+  let i = 0;
   while(i < N){
-    const c = content[i];
-    if(c === '('){
-      let depth=1, j=i+1, inner='';
-      while(j<N && depth>0){
-        const cc = content[j];
-        if(cc==='\\'){ inner += cc + (content[j+1]||''); j+=2; continue; }
-        if(cc==='(') depth++;
-        else if(cc===')'){ depth--; if(depth===0) break; }
-        inner += cc; j++;
+    // Try to begin a text run at i (skipping leading whitespace).
+    let j = i, strRefs = [], consumed = false;
+    while(true){
+      const sj = skipWs(toks, j);
+      const show = matchShowAt(toks, sj);
+      if(!show) break;
+      for(const idx of show.strIdx) strRefs.push(idx);
+      consumed = true;
+      j = show.endIdx + 1; // continue right after the operator; only ws may follow
+    }
+    if(consumed){
+      if(strRefs.length){
+        const fragTexts = strRefs.map(idx => decodeStr(toks[idx]));
+        const { texts, count:c, L, matches } = replaceAcrossFragments(fragTexts, find, replace, opts);
+        if(c > 0){
+          count += c;
+          for(let p=0;p<strRefs.length;p++) toks[strRefs[p]].raw = encodeStr(toks[strRefs[p]].kind, texts[p]);
+          for(const mt of matches){
+            if(samples.length >= 80) break;
+            const from = Math.max(0, mt.s-24), to = Math.min(L.length, mt.e+24);
+            samples.push({ before:L.slice(from, mt.s), hit:L.slice(mt.s, mt.e), after:L.slice(mt.e, to) });
+          }
+        }
       }
-      out.push(decodeLiteral(inner)); i = j+1;
-    } else if(c === '<' && content[i+1] !== '<'){
-      let j=i+1, inner='';
-      while(j<N && content[j] !== '>'){ inner += content[j]; j++; }
-      out.push(decodeHex(inner)); i = j+1;
-    } else if(c === '<' && content[i+1] === '<'){ i += 2; }
+      i = j;
+    } else {
+      i++;
+    }
+  }
+
+  let out = ''; for(const t of toks) out += t.raw;
+  return { text: out, count, samples };
+}
+
+// Reconstruct the visible text of a content stream (one space between runs).
+function extractText(content){
+  const toks = tokenize(content);
+  const parts = []; let i = 0;
+  while(i < toks.length){
+    const sj = skipWs(toks, i);
+    const show = matchShowAt(toks, sj);
+    if(show){ parts.push(show.strIdx.map(idx => decodeStr(toks[idx])).join('')); i = show.endIdx + 1; }
     else i++;
   }
-  return out.join('');
+  return parts.join(' ');
 }
 
 /* =========================================================================
