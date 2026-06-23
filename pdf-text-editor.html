@@ -143,7 +143,7 @@
         <li><strong>Preserved exactly:</strong> font, size, position, color, rotation and all other graphics. Only the string operand of the text is changed, written back as an incremental update so the rest of the file is untouched.</li>
         <li><strong>Batch:</strong> the same find/replace is applied to every loaded file independently. One file downloads as a PDF; multiple files download together as a ZIP (you can also download each from the list).</li>
         <li><strong>Cannot edit:</strong> text that the CAD program exported as vector outlines/curves (it is geometry, not text). Use "Show editable text" to confirm what is real text.</li>
-        <li><strong>Limited:</strong> subset or CID fonts with custom non-ASCII encodings; replacement characters may lack glyphs in the embedded subset. Prefer characters already used in the drawing.</li>
+        <li><strong>Glyphs:</strong> CAD PDFs usually embed only a <em>subset</em> of each font — just the characters the drawing actually uses. If you replace with a character whose glyph isn't in that subset (e.g. a "B" when no "B" appears anywhere), it would be invisible, so the tool refuses that edit and tells you which character is missing rather than producing blank text. Tip: replace using characters already present in the drawing.</li>
       </ul>
     </details>
   </div>
@@ -451,7 +451,7 @@ function cidDecoder(map,codeBytes){
   const nb=codeBytes||2;
   return {encoded:true,
     toUnits:(raw)=>{const u=[];for(let i=0;i+nb<=raw.length;i+=nb){let code=0;for(let k=0;k<nb;k++)code=(code<<8)|raw.charCodeAt(i+k);u.push({bytes:raw.substr(i,nb),uni:map.has(code)?map.get(code):'�'});}return u;},
-    encodeChar:(ch)=>{if(uni2code.has(ch)){const code=uni2code.get(ch);let s='';for(let k=nb-1;k>=0;k--)s=String.fromCharCode((code>>(8*k))&255)+s;return s;}return null;}};
+    encodeChar:(ch)=>{if(uni2code.has(ch)){const code=uni2code.get(ch);let s='';for(let k=nb-1;k>=0;k--)s+=String.fromCharCode((code>>(8*k))&255);return s;}return null;}};
 }
 
 async function buildFontDecoders(parsed, s){
@@ -491,7 +491,25 @@ async function buildFontDecoders(parsed, s){
     }
     if(decoder)decoders.set(o.num,decoder);
   }
-  return {decoders,byNum};
+  // Determine which fonts are subset/embedded — for those, a replacement glyph
+  // only renders if its code is already used in the document (the subset only
+  // embeds glyphs that are drawn). Non-embedded base fonts are treated as full.
+  const guarded=new Map();
+  for(const o of objs){
+    if(!/\/Type\s*\/Font/.test(o.dict))continue;
+    guarded.set(o.num, isFontGuarded(o, byNum));
+  }
+  return {decoders,byNum,guarded};
+}
+function isFontGuarded(o, byNum){
+  const base=o.dict.match(/\/BaseFont\s*\/([A-Za-z0-9+\-]+)/);
+  if(base && /^[A-Z]{6}\+/.test(base[1]))return true;          // subset tag ABCDEF+
+  if(/\/FontFile[123]?\b/.test(o.dict))return true;            // embedded program
+  if(/\/Subtype\s*\/Type0/.test(o.dict)){
+    const df=o.dict.match(/\/DescendantFonts\s*\[\s*(\d+)\s+\d+\s+R/)||o.dict.match(/\/DescendantFonts\s+(\d+)\s+\d+\s+R/);
+    if(df){const d=byNum.get(+df[1]);if(d){if(/\/FontFile[123]?\b/.test(d.dict))return true;const b2=d.dict.match(/\/BaseFont\s*\/([A-Za-z0-9+\-]+)/);if(b2&&/^[A-Z]{6}\+/.test(b2[1]))return true;}}
+  }
+  return false;
 }
 
 function parseResourcesFonts(dict, byNum, s){
@@ -556,56 +574,55 @@ function matchShowAt(toks,p){const t=toks[p];if(!t)return null;
   if(t.t==='arr-open'){let q=p+1,depth=1;while(q<toks.length&&depth>0){if(toks[q].t==='arr-open')depth++;else if(toks[q].t==='arr-close'){depth--;if(depth===0)break;}q++;}const op=skipWs(toks,q+1);const o=toks[op];if(o&&o.t==='op'&&o.raw==='TJ'){const strIdx=[];for(let k=p+1;k<q;k++)if(toks[k].t==='str')strIdx.push(k);return {strIdx,endIdx:op};}return null;}
   return null;}
 
-function processContent(content,find,replace,opts,fontMap,decoders){
+function processContent(content,find,replace,opts,fontMap,decoders,canEncodeCode){
   const toks=tokenize(content);
-  let found=0,replaced=0,unreplaceable=0;const samples=[];const N=toks.length;
-  let curDecoder=identityDecoder();
+  let found=0,replaced=0,unreplaceable=0;const samples=[];const missing=new Set();const N=toks.length;
+  let curDecoder=identityDecoder(); let curObj=null;
   fontMap=fontMap||new Map(); decoders=decoders||new Map();
+  canEncodeCode=canEncodeCode||(()=>true);
   let i=0;
   while(i<N){
     let j=i,strRefs=[],consumed=false;
-    // update current font if this position is "/Fx size Tf"
-    // detect Tf by scanning: simpler—precompute font switches in a pass
     const sj0=skipWs(toks,i);
     const show=matchShowAt(toks,sj0);
     if(show){
-      // gather run
       while(true){const sj=skipWs(toks,j);const sh=matchShowAt(toks,sj);if(!sh)break;for(const idx of sh.strIdx)strRefs.push(idx);consumed=true;j=sh.endIdx+1;}
     }
     if(consumed&&strRefs.length){
-      const res=replaceRun(strRefs.map(idx=>toks[idx]),find,replace,opts,curDecoder);
+      const objNum=curObj;
+      const res=replaceRun(strRefs.map(idx=>toks[idx]),find,replace,opts,curDecoder,(cb)=>canEncodeCode(objNum,cb));
       found+=res.found; replaced+=res.replaced; unreplaceable+=res.unreplaceable;
       for(const smp of res.samples){if(samples.length<80)samples.push(smp);}
+      for(const ch of res.missing)missing.add(ch);
       i=j;
     } else {
-      // font tracking: if op is Tf, set curDecoder from the name two sig tokens back
       if(toks[i].t==='op'&&toks[i].raw==='Tf'){
-        // find preceding name token
-        let k=i-1,seen=0,nameTok=null;
+        let k=i-1,nameTok=null;
         while(k>=0&&i-k<8){if(toks[k].t==='name'){nameTok=toks[k];break;}k--;}
-        if(nameTok){const fn=nameTok.raw.slice(1);const objNum=fontMap.get(fn);curDecoder=(objNum!=null&&decoders.get(objNum))||identityDecoder();}
+        if(nameTok){const fn=nameTok.raw.slice(1);curObj=fontMap.get(fn);curDecoder=(curObj!=null&&decoders.get(curObj))||identityDecoder();}
       }
       i++;
     }
   }
   let out='';for(const t of toks)out+=t.raw;
-  return {text:out,found,replaced,unreplaceable,samples};
+  return {text:out,found,replaced,unreplaceable,samples,missing};
 }
 
-function replaceRun(strTokens,find,replace,opts,decoder){
+function replaceRun(strTokens,find,replace,opts,decoder,canEncode){
+  canEncode=canEncode||(()=>true);
   const units=[]; // {frag,bytes,uni}
   strTokens.forEach((tok,fi)=>{const raw=decodeStrTok(tok);const us=decoder.toUnits(raw);for(const u of us)units.push({frag:fi,bytes:u.bytes,uni:u.uni});});
   let L='';const unitAt=[];
   units.forEach((u,ui)=>{for(const ch of u.uni){L+=ch;unitAt.push(ui);}});
   const re=buildMatcher(find,opts.caseSensitive,opts.wholeWord);
   const matches=[];let m;while((m=re.exec(L))){matches.push({s:m.index,e:m.index+m[0].length});if(m.index===re.lastIndex)re.lastIndex++;}
-  if(!matches.length)return {found:0,replaced:0,unreplaceable:0,samples:[]};
+  if(!matches.length)return {found:0,replaced:0,unreplaceable:0,samples:[],missing:[]};
   const samples=[];
   for(const mt of matches){const from=Math.max(0,mt.s-24),to=Math.min(L.length,mt.e+24);samples.push({before:L.slice(from,mt.s),hit:L.slice(mt.s,mt.e),after:L.slice(mt.e,to)});}
-  // encode replacement
-  let repBytes='';let encodable=true;
-  for(const ch of replace){const b=decoder.encodeChar(ch);if(b==null){encodable=false;break;}repBytes+=b;}
-  if(!encodable)return {found:matches.length,replaced:0,unreplaceable:matches.length,samples};
+  // encode replacement: each new char must be encodable AND its glyph present
+  let repBytes='';let encodable=true;const missing=[];
+  for(const ch of replace){const b=decoder.encodeChar(ch);if(b==null||!canEncode(b)){encodable=false;missing.push(ch);}else repBytes+=b;}
+  if(!encodable)return {found:matches.length,replaced:0,unreplaceable:matches.length,samples,missing};
   const removed=new Array(units.length).fill(false);
   const insertAt=new Map();const changedFrag=new Set();
   for(const mt of matches){
@@ -619,7 +636,7 @@ function replaceRun(strTokens,find,replace,opts,decoder){
     if(!removed[ui])newRaw[units[ui].frag]+=units[ui].bytes;
   }
   strTokens.forEach((tok,fi)=>{if(changedFrag.has(fi))tok.raw=encodeStrTok(tok.kind,newRaw[fi]);});
-  return {found:matches.length,replaced:matches.length,unreplaceable:0,samples};
+  return {found:matches.length,replaced:matches.length,unreplaceable:0,samples,missing:[]};
 }
 
 function extractText(content,fontMap,decoders){
@@ -642,12 +659,27 @@ function setFilterFlate(dict){
   return dict.replace(/>>\s*$/,' /Filter /FlateDecode >>');
 }
 
+// Walk show operators tracking the active font; call fn(decoder, fontObjNum, strTokens).
+function forEachShowRun(content, fontMap, decoders, fn){
+  const toks=tokenize(content); let i=0; let curDecoder=identityDecoder(); let curObj=null;
+  while(i<toks.length){
+    if(toks[i].t==='op'&&toks[i].raw==='Tf'){let k=i-1,nameTok=null;while(k>=0&&i-k<8){if(toks[k].t==='name'){nameTok=toks[k];break;}k--;}if(nameTok){curObj=fontMap.get(nameTok.raw.slice(1));curDecoder=(curObj!=null&&decoders.get(curObj))||identityDecoder();}i++;continue;}
+    const sj=skipWs(toks,i); const show=matchShowAt(toks,sj);
+    if(show){fn(curDecoder,curObj,show.strIdx.map(idx=>toks[idx]));i=show.endIdx+1;}
+    else i++;
+  }
+}
+
 async function runOverContentStreams(pdfBytes,mode,find,replace,opts){
   const s=bytesToStr(pdfBytes);
   const parsed=scanObjects(s);
-  const {decoders,byNum}=await buildFontDecoders(parsed,s);
+  const {decoders,byNum,guarded}=await buildFontDecoders(parsed,s);
   const contentFonts=mapContentToFonts(parsed,byNum,s);
-  const result={streamsSeen:0,contentStreams:0,totalMatches:0,unreplaceable:0,samples:[],modified:[],skipped:0,extracted:[]};
+  const result={streamsSeen:0,contentStreams:0,totalMatches:0,unreplaceable:0,samples:[],modified:[],skipped:0,extracted:[],missingChars:new Set()};
+
+  // Pass 1: decode each content stream once and collect, per font, the set of
+  // code bytes that are actually drawn (= glyphs the subset is known to embed).
+  const streams=[]; const usedCodes=new Map();
   for(const o of parsed.objs){
     if(!o.isStream)continue;result.streamsSeen++;
     const raw=strToBytes(s.slice(o.streamStart,o.streamEnd));
@@ -657,10 +689,22 @@ async function runOverContentStreams(pdfBytes,mode,find,replace,opts){
     if(!/\bBT\b|\bTj\b|\bTJ\b|\bTf\b|\bTd\b|\bTD\b|\bTm\b/.test(content))continue;
     result.contentStreams++;
     const fontMap=contentFonts.get(o.num)||new Map();
+    streams.push({o,content,fontMap});
+    forEachShowRun(content,fontMap,decoders,(decoder,objNum,strTokens)=>{
+      if(objNum==null)return; let set=usedCodes.get(objNum); if(!set){set=new Set();usedCodes.set(objNum,set);}
+      for(const tok of strTokens){const raw2=tok.kind==='hex'?decodeHex(tok.raw.slice(1,-1)):decodeLiteral(tok.raw.slice(1,-1));for(const u of decoder.toUnits(raw2))set.add(u.bytes);}
+    });
+  }
+  // canEncodeCode: a replacement code only renders if the font isn't a subset,
+  // or the code is already used somewhere (its glyph is embedded).
+  const canEncodeCode=(objNum,codeBytes)=>{ if(objNum==null)return true; if(!guarded.get(objNum))return true; const set=usedCodes.get(objNum); return set?set.has(codeBytes):false; };
+
+  // Pass 2
+  for(const {o,content,fontMap} of streams){
     if(mode==='extract'){const t=extractText(content,fontMap,decoders).replace(/\s+/g,' ').trim();if(t)result.extracted.push({num:o.num,text:t});continue;}
-    const r=processContent(content,find,replace,opts,fontMap,decoders);
+    const r=processContent(content,find,replace,opts,fontMap,decoders,canEncodeCode);
     if(r.unreplaceable)result.unreplaceable+=r.unreplaceable;
-    // scan/preview: count everything found. apply: count only what we actually rewrote.
+    for(const ch of r.missing)result.missingChars.add(ch);
     const tally = mode==='apply' ? r.replaced : r.found;
     if((r.found>0 && mode!=='apply') || (mode==='apply' && r.replaced>0)){
       result.totalMatches+=tally;
@@ -944,15 +988,17 @@ els.applyBtn.addEventListener('click', async () => {
   enableActions(false); setStatus('Replacing…');
   let editedFiles = 0, grandTotal = 0;
   try{
-    let grandUnreplaceable = 0;
+    let grandUnreplaceable = 0; const allMissing = new Set();
     for(const f of files){
       f.edited = null;
       const r = await runOverContentStreams(f.bytes, 'apply', find, replace, opts);
       grandUnreplaceable += r.unreplaceable || 0;
+      if(r.missingChars) for(const ch of r.missingChars) allMissing.add(ch);
       if(!r.totalMatches){
         if(r.unreplaceable){
-          setFileStatus(f, 'warn', `${r.unreplaceable} found, font can't encode`);
-          log(`"${f.name}": found ${r.unreplaceable} match(es) but the embedded font can't represent the replacement characters — left unchanged.`, 'err');
+          setFileStatus(f, 'warn', `${r.unreplaceable} found, missing glyph`);
+          const miss = r.missingChars && r.missingChars.size ? ` The embedded font has no glyph for: ${[...r.missingChars].map(c=>JSON.stringify(c)).join(', ')}.` : '';
+          log(`"${f.name}": found ${r.unreplaceable} match(es) but the embedded subset font can't display the new character(s) — left unchanged.${miss}`, 'err');
         } else {
           setFileStatus(f, 'warn', 'no match');
           log(`"${f.name}": no matches — unchanged.`);
@@ -968,8 +1014,9 @@ els.applyBtn.addEventListener('click', async () => {
     renderFiles();
     if(!editedFiles){
       if(grandUnreplaceable){
-        setStatus(`<span class="pill warn">${grandUnreplaceable} found, not replaceable</span> The text was found but the embedded subset/CID font can't represent the new characters. Try replacing with characters already used in the drawing.`);
-        log(`Found ${grandUnreplaceable} match(es) but the font(s) can't encode the replacement — nothing changed.`, 'err');
+        const miss = allMissing.size ? ` Missing glyph(s): ${[...allMissing].map(c=>JSON.stringify(c)).join(', ')}.` : '';
+        setStatus(`<span class="pill warn">${grandUnreplaceable} found, can't display new text</span> The drawing's embedded subset font has no glyphs for the new character(s), so they'd be invisible — left unchanged.${escapeHtml(miss)} Tip: replace using characters already present in the drawing.`);
+        log(`Found ${grandUnreplaceable} match(es) but the embedded font lacks glyphs for the replacement — nothing changed (no invisible text written).${miss}`, 'err');
       } else {
         setStatus('<span class="pill warn">No matches</span> Nothing was changed in any file.');
         log(`No matches for "${find}" — nothing downloaded.`, 'err');
