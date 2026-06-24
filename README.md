@@ -37,10 +37,15 @@ you confirm.
 ## Combined app (both tools in one file)
 
 `npm run build` also produces **`dist/arx-tools.html`** — a single
-self-contained file that contains both tools in two tabs:
+self-contained file that contains the tools in three tabs:
 
 * **Drawing Checker** — the title-block / spelling / formatting reviewer.
 * **PDF Text Editor** — the batch find &amp; replace tool.
+* **Rule Check** (`rule-check.html`) — batch checker that, for each PDF,
+  reports how many instances of a rule (e.g. a drawing-number format) are
+  correct and how many are wrong. Each rule has a *find* pattern (locates
+  candidates), a *valid format* pattern (a correct instance must match it),
+  and an optional *expected value*; results can be exported to CSV.
 
 Each tool runs in its own isolated frame, so they never interfere. A shared
 **"Choose download folder…"** control at the top lets you pick where edited
@@ -66,8 +71,11 @@ that simple scanners miss:
 * **Filter chains** — `FlateDecode`, `LZWDecode`, `ASCII85Decode`,
   `ASCIIHexDecode`, `RunLengthDecode` and PNG/TIFF predictors, in any
   combination.
-* **Kerned runs** — words split across `TJ` array fragments or consecutive
-  show operators are reconstructed before matching.
+* **Line reconstruction** — text is grouped by baseline using the text
+  matrix, so long strings (e.g. title-block drawing numbers) that are placed
+  character-by-character with `Td`/`Tm` offsets, or split across `TJ`
+  fragments, are reconstructed into one searchable string. Replacements are
+  distributed back per character so the original positioning is preserved.
 * **Font encodings** — text is decoded to Unicode via `/ToUnicode` CMaps and
   `/Encoding` `/Differences`, so subset and CID/Type0 fonts can be searched.
   Replacement is applied when the font can represent the new characters and is

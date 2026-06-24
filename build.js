@@ -72,10 +72,12 @@ function withSaveShim(htmlText) {
 // still produced for standalone use and the build test.
 const checkerHtml = withSaveShim(readFileSync('vendor/drawing-checker.html', 'utf8'));
 const editorHtml = readFileSync('pdf-text-editor.html', 'utf8');
+const rulesHtml = readFileSync('rule-check.html', 'utf8');
 const arxTemplate = readFileSync('arx.template.html', 'utf8');
 const arxHtml = arxTemplate
   .replace('/*__CHECKER_HTML__*/', () => embed(checkerHtml))
-  .replace('/*__EDITOR_HTML__*/', () => embed(editorHtml));
+  .replace('/*__EDITOR_HTML__*/', () => embed(editorHtml))
+  .replace('/*__RULES_HTML__*/', () => embed(rulesHtml));
 
 writeFileSync('dist/arx-tools.html', arxHtml);
 console.log('Built dist/arx-tools.html');

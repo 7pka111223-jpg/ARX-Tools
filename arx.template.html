@@ -46,6 +46,7 @@
     <div class="tabs">
       <button class="tab active" data-tab="checker">Drawing Checker</button>
       <button class="tab" data-tab="editor">PDF Text Editor</button>
+      <button class="tab" data-tab="rules">Rule Check</button>
     </div>
     <div class="save">
       <span id="saveInfo">Saves to your browser's Downloads folder</span>
@@ -56,25 +57,30 @@
   <div class="frames">
     <iframe id="frameChecker" title="Drawing Checker"></iframe>
     <iframe id="frameEditor" class="hidden" title="PDF Text Editor"></iframe>
+    <iframe id="frameRules" class="hidden" title="Rule Check"></iframe>
   </div>
 
 <script>
-  // Both tools are embedded, unchanged and fully isolated, via srcdoc iframes.
+  // Each tool is embedded, unchanged and fully isolated, via srcdoc iframes.
   const CHECKER_HTML = /*__CHECKER_HTML__*/;
   const EDITOR_HTML  = /*__EDITOR_HTML__*/;
+  const RULES_HTML   = /*__RULES_HTML__*/;
   document.getElementById('frameChecker').srcdoc = CHECKER_HTML;
   document.getElementById('frameEditor').srcdoc  = EDITOR_HTML;
+  document.getElementById('frameRules').srcdoc   = RULES_HTML;
 
   // ---- tabs ----
   const frames = {
     checker: document.getElementById('frameChecker'),
     editor:  document.getElementById('frameEditor'),
+    rules:   document.getElementById('frameRules'),
   };
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === t));
     const which = t.dataset.tab;
     frames.checker.classList.toggle('hidden', which !== 'checker');
     frames.editor.classList.toggle('hidden', which !== 'editor');
+    frames.rules.classList.toggle('hidden', which !== 'rules');
   }));
 
   // ---- shared "save location" (File System Access API) ----
