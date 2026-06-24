@@ -88,7 +88,7 @@
 
   <div class="panel">
     <h2>2 · Rules</h2>
-    <p class="hint" style="margin-top:-4px">Each rule <strong>finds</strong> candidate text with a pattern, then marks each instance <strong>correct</strong> if it matches the <strong>valid format</strong> (and the expected value, if set), otherwise <strong>wrong</strong>. Patterns are regular expressions.</p>
+    <p class="hint" style="margin-top:-4px">Define each rule like the Drawing Checker: type an <strong>example value</strong> and the <strong>variable part</strong> that changes between drawings. The format is learned from the example (e.g. <code>J2501</code> → an uppercase letter + 4 digits). Each found instance is <strong>correct</strong> if it matches that format, otherwise <strong>wrong</strong>.</p>
     <div id="rules"></div>
     <div class="btns">
       <button id="addRule">+ Add rule</button>
@@ -662,17 +662,43 @@ function setStatus(h){els.status.innerHTML=h;}
 function escapeHtml(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function fmtSize(n){return n<1048576?(n/1024).toFixed(0)+' KB':(n/1048576).toFixed(1)+' MB';}
 
+/* ---- pattern from an example value + the variable part (same method as the
+   Drawing Checker tab): the variable part is split into runs of digits /
+   uppercase / lowercase, each becoming \d{n} / [A-Z]{n} / [a-z]{n}; the fixed
+   prefix/suffix are matched literally. ---- */
+const RUN_CLASS_LABEL={digit:'digit',upper:'uppercase letter',lower:'lowercase letter'};
+function classifyCh(ch){if(/[0-9]/.test(ch))return 'digit';if(/[A-Z]/.test(ch))return 'upper';if(/[a-z]/.test(ch))return 'lower';return 'literal';}
+function toRuns(text){const runs=[];for(const ch of text){const cls=classifyCh(ch);const last=runs[runs.length-1];if(last&&last.cls===cls)last.text+=ch;else runs.push({cls,text:ch});}return runs;}
+function escRe(str){return String(str).replace(/[.*+?^${}()|[\]\\\-]/g,'\\$&');}
+function runToPattern(run){if(run.cls==='literal')return escRe(run.text);const cls=run.cls==='digit'?'\\d':run.cls==='upper'?'[A-Z]':'[a-z]';return run.text.length===1?cls:`${cls}{${run.text.length}}`;}
+function runToLoose(run){if(run.cls==='literal')return escRe(run.text);return run.cls==='digit'?'\\d+':run.cls==='upper'?'[A-Z]+':'[a-z]+';}
+function runToDesc(run){if(run.cls==='literal')return `the text "${run.text}"`;const n=run.text.length;return `${n} ${RUN_CLASS_LABEL[run.cls]}${n===1?'':'s'}`;}
+function buildPattern(example,variablePart){
+  if(!example)return {error:'Enter an example value first.'};
+  if(!variablePart)return {error:'Enter the part of the example that changes between drawings.'};
+  const index=example.indexOf(variablePart);
+  if(index===-1)return {error:`"${variablePart}" was not found inside the example value.`};
+  const warning=example.indexOf(variablePart,index+1)!==-1?`"${variablePart}" appears more than once in the example — the first occurrence was used.`:null;
+  const prefix=example.slice(0,index), suffix=example.slice(index+variablePart.length);
+  const runs=toRuns(variablePart);
+  const valid=`^${escRe(prefix)}${runs.map(runToPattern).join('')}${escRe(suffix)}$`;
+  // looser locator (same class skeleton, any lengths) to also catch malformed instances
+  const locate=`(?<![A-Za-z0-9])${escRe(prefix)}${runs.map(runToLoose).join('')}${escRe(suffix)}(?![A-Za-z0-9])`;
+  const parts=[];if(prefix)parts.push(`the text "${prefix}"`);parts.push(...runs.map(runToDesc));if(suffix)parts.push(`the text "${suffix}"`);
+  return {valid,locate,explanation:`Will match: ${parts.join(' + ')}`,warning,error:null};
+}
+
 /* ---- default example rules ---- */
 function defaultRules(){
-  return [{
-    id:nextId++, name:'Drawing Number',
-    find:'[A-Z0-9]{3,}(?:-[A-Z0-9]+){2,}',
-    valid:'[A-Z]\\d{4}-[A-Z]{3}-[A-Z]{3}-[A-Z]{2}-\\d{5}',
-    expected:'', ci:false
-  }];
+  return [{ id:nextId++, name:'Drawing Number', example:'J2501-JPD-EBH-DG-20100', variablePart:'J2501-JPD-EBH-DG-20100', ci:false }];
 }
 let rules=defaultRules();
 
+function ruleExplainHtml(r){
+  const b=buildPattern(r.example,r.variablePart);
+  if(b.error)return `<span class="pill warn">incomplete</span> ${escapeHtml(b.error)}`;
+  return `${escapeHtml(b.explanation)}<br><span class="hint mono">format: ${escapeHtml(b.valid)}</span>${b.warning?`<br><span class="pill warn">note</span> ${escapeHtml(b.warning)}`:''}`;
+}
 function renderRules(){
   els.rules.innerHTML=rules.map(r=>`
     <div class="rule" data-id="${r.id}">
@@ -681,16 +707,21 @@ function renderRules(){
         <button class="sm ghost" data-del="${r.id}">Delete</button>
       </div>
       <div class="grid">
-        <div class="full"><label>Find pattern (locates candidate instances)</label><input type="text" class="mono" data-k="find" value="${escapeHtml(r.find)}" placeholder="e.g. [A-Z0-9]{3,}(?:-[A-Z0-9]+){2,}"></div>
-        <div><label>Valid format (a correct instance must fully match)</label><input type="text" class="mono" data-k="valid" value="${escapeHtml(r.valid)}" placeholder="e.g. [A-Z]\\d{4}-[A-Z]{3}-..."></div>
-        <div><label>Expected value (optional — exact match required)</label><input type="text" class="mono" data-k="expected" value="${escapeHtml(r.expected)}" placeholder="e.g. J2501-JPD-EBH-DG-20100"></div>
+        <div><label>Example value (a correct one)</label><input type="text" class="mono" data-k="example" value="${escapeHtml(r.example)}" placeholder="e.g. J2501-JPD-EBH-DG-20100"></div>
+        <div><label>Variable part (what changes between drawings)</label><input type="text" class="mono" data-k="variablePart" value="${escapeHtml(r.variablePart)}" placeholder="e.g. J2501-JPD-EBH-DG-20100"></div>
       </div>
       <div class="checks"><label><input type="checkbox" data-k="ci" ${r.ci?'checked':''}> Ignore case</label></div>
+      <div class="meta rexplain" style="margin-top:8px">${ruleExplainHtml(r)}</div>
     </div>`).join('');
 }
-els.rules.addEventListener('input',e=>{const card=e.target.closest('.rule');if(!card)return;const id=+card.dataset.id;const r=rules.find(x=>x.id===id);if(!r)return;const k=e.target.dataset.k;if(!k)return;r[k]=e.target.type==='checkbox'?e.target.checked:e.target.value;});
+els.rules.addEventListener('input',e=>{
+  const card=e.target.closest('.rule');if(!card)return;const id=+card.dataset.id;const r=rules.find(x=>x.id===id);if(!r)return;
+  const k=e.target.dataset.k;if(!k)return;
+  r[k]=e.target.type==='checkbox'?e.target.checked:e.target.value;
+  const ex=card.querySelector('.rexplain');if(ex)ex.innerHTML=ruleExplainHtml(r);
+});
 els.rules.addEventListener('click',e=>{const del=e.target.getAttribute('data-del');if(del){rules=rules.filter(x=>x.id!==+del);renderRules();}});
-els.addRule.addEventListener('click',()=>{rules.push({id:nextId++,name:'New rule',find:'',valid:'',expected:'',ci:false});renderRules();});
+els.addRule.addEventListener('click',()=>{rules.push({id:nextId++,name:'New rule',example:'',variablePart:'',ci:false});renderRules();});
 els.resetRules.addEventListener('click',()=>{rules=defaultRules();renderRules();});
 
 /* ---- files ---- */
@@ -736,29 +767,22 @@ async function extractLines(pdfBytes){
 }
 
 /* ---- rule evaluation ---- */
-function compileRule(r){
-  let findRe=null,validRe=null,err=null;
-  try{ if(r.find) findRe=new RegExp(r.find,'g'+(r.ci?'i':'')); }catch(e){err='Find pattern invalid: '+e.message;}
-  try{ if(r.valid) validRe=new RegExp('^(?:'+r.valid+')$',(r.ci?'i':'')); }catch(e){err=err||('Valid pattern invalid: '+e.message);}
-  return {findRe,validRe,err};
-}
 function evalRule(lines,r){
-  const {findRe,validRe,err}=compileRule(r);
-  if(err)return {error:err};
+  const built=buildPattern(r.example,r.variablePart);
+  if(built.error)return {error:built.error};
+  let locateRe,validRe;
+  try{ locateRe=new RegExp(built.locate,'g'+(r.ci?'i':'')); validRe=new RegExp(built.valid,r.ci?'i':''); }
+  catch(e){ return {error:'Pattern error: '+e.message}; }
   const text=lines.join('\n');
-  const correct=[],wrong=[];const seen=new Set();
-  if(findRe){
-    let m;findRe.lastIndex=0;
-    while((m=findRe.exec(text))){
-      const val=m[0];
-      if(m.index===findRe.lastIndex)findRe.lastIndex++;
-      let ok=validRe?validRe.test(val):true;
-      if(ok&&r.expected){ok=r.ci?val.toLowerCase()===r.expected.toLowerCase():val===r.expected;}
-      (ok?correct:wrong).push(val);
-    }
+  const correct=[],wrong=[];
+  let m;locateRe.lastIndex=0;
+  while((m=locateRe.exec(text))){
+    const val=m[0];
+    if(m.index===locateRe.lastIndex)locateRe.lastIndex++;
+    (validRe.test(val)?correct:wrong).push(val);
   }
   const found=correct.length+wrong.length;
-  return {found,correct,wrong,missing:found===0};
+  return {found,correct,wrong,missing:found===0,explanation:built.explanation};
 }
 
 /* ---- run ---- */
