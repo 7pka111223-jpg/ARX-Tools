@@ -67,10 +67,21 @@ function withSaveShim(htmlText) {
     : SAVE_SHIM + htmlText;
 }
 
+// Hide the Drawing Checker's formatting-rule "regex" editor (Find/Valid regex
+// fields, the preset chips, and the sample-line tester) in the combined app.
+// Done with CSS rather than removing markup so the bundle's JS, which queries
+// those element IDs on init, keeps working.
+const CHECKER_HIDE_CSS = '<style>.field-row:has(#ruleFind),#formatPresets,.pattern-tester:has(#formatTestValue),#formatTestMatches{display:none !important;}</style>';
+function withCheckerTweaks(htmlText) {
+  return htmlText.includes('</head>')
+    ? htmlText.replace('</head>', CHECKER_HIDE_CSS + '\n</head>')
+    : CHECKER_HIDE_CSS + htmlText;
+}
+
 // The Drawing Checker tab uses the maintained standalone build in vendor/
 // (full spell-checker). The freshly built dist/drawing-checker.html above is
 // still produced for standalone use and the build test.
-const checkerHtml = withSaveShim(readFileSync('vendor/drawing-checker.html', 'utf8'));
+const checkerHtml = withCheckerTweaks(withSaveShim(readFileSync('vendor/drawing-checker.html', 'utf8')));
 const editorHtml = readFileSync('pdf-text-editor.html', 'utf8');
 const rulesHtml = readFileSync('rule-check.html', 'utf8');
 const signatureHtml = readFileSync('signature-check.html', 'utf8');
