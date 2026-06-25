@@ -43,9 +43,16 @@ self-contained file that contains the tools in three tabs:
 * **PDF Text Editor** — the batch find &amp; replace tool.
 * **Rule Check** (`rule-check.html`) — batch checker that, for each PDF,
   reports how many instances of a rule (e.g. a drawing-number format) are
-  correct and how many are wrong. Each rule has a *find* pattern (locates
-  candidates), a *valid format* pattern (a correct instance must match it),
-  and an optional *expected value*; results can be exported to CSV.
+  correct and how many are wrong. Rules are defined by an *example value* plus
+  the *variable part* that changes between drawings (the same method as the
+  Drawing Checker), or matched exactly; results can be exported to CSV.
+* **Signature Checker** (`signature-check.html`) — attach a reference
+  signature image, then check which PDFs contain it. It extracts every
+  embedded image from each PDF and compares it to the reference with a
+  normalized grayscale correlation score, reporting present/absent, the best
+  score and a thumbnail per file. Works for signatures embedded as their own
+  image (JPEG or Flate); it does not decode JPEG2000/JBIG2/CCITT images or
+  find a signature inside a larger flattened page image.
 
 Each tool runs in its own isolated frame, so they never interfere. A shared
 **"Choose download folder…"** control at the top lets you pick where edited
