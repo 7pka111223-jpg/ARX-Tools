@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signature Checker — Find a Signature Image in PDFs</title>
+<style>
+  :root{--bg:#0f172a;--panel:#1e293b;--panel2:#273449;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#38bdf8;--accent2:#0ea5e9;--good:#34d399;--warn:#fbbf24;--bad:#f87171;--radius:10px}
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font:14px/1.5 system-ui,Segoe UI,Roboto,Arial,sans-serif;min-height:100vh}
+  header{padding:20px 24px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#13203b,#0f172a)}
+  header h1{margin:0 0 4px;font-size:19px}
+  header p{margin:0;color:var(--muted);font-size:13px}
+  main{max-width:1100px;margin:0 auto;padding:22px 24px 60px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:18px}
+  .panel h2{margin:0 0 12px;font-size:14px;text-transform:uppercase;letter-spacing:.6px;color:var(--accent)}
+  .drop{border:2px dashed var(--line);border-radius:var(--radius);padding:24px;text-align:center;color:var(--muted);cursor:pointer;transition:.15s;background:var(--panel2)}
+  .drop.drag{border-color:var(--accent);color:var(--text);background:#21344f}
+  .drop strong{color:var(--text)}
+  .hint{font-size:12.5px;color:var(--muted)}
+  .refrow{display:flex;gap:16px;align-items:center;margin-top:12px}
+  .refimg{border:1px solid var(--line);border-radius:8px;background:#fff;max-width:200px;max-height:90px;object-fit:contain;padding:4px}
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+  .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center}
+  button{border:0;border-radius:8px;padding:10px 16px;font:inherit;font-weight:600;cursor:pointer;background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+  button:hover:not(:disabled){border-color:var(--accent)}
+  button.primary{background:var(--accent2);border-color:var(--accent2);color:#04121f}
+  button.primary:hover:not(:disabled){background:var(--accent)}
+  button.ghost{background:transparent}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  input[type=range]{vertical-align:middle}
+  .meta{font-size:12px;color:var(--muted);margin-top:10px}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600}
+  .pill.good{background:rgba(52,211,153,.15);color:var(--good)}
+  .pill.warn{background:rgba(251,191,36,.15);color:var(--warn)}
+  .pill.bad{background:rgba(248,113,113,.15);color:var(--bad)}
+  .pill.idle{background:rgba(148,163,184,.15);color:var(--muted)}
+  .files{margin-top:14px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .frow{display:flex;align-items:center;gap:12px;padding:9px 12px;border-bottom:1px solid var(--line);background:#0b1426}
+  .frow:last-child{border-bottom:0}
+  .frow .nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+  .frow .sz{color:var(--muted);font-size:12px;white-space:nowrap}
+  .frow .rm{color:var(--muted);cursor:pointer;font-size:16px;line-height:1;background:none;border:0}
+  .frow .rm:hover{color:var(--bad)}
+  .results{border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .rcard{display:flex;gap:14px;align-items:center;padding:11px 12px;border-bottom:1px solid var(--line);background:#0b1426}
+  .rcard:last-child{border-bottom:0}
+  .rcard .nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+  .rcard .score{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
+  .rcard .thumb{border:1px solid var(--line);border-radius:6px;background:#fff;height:46px;max-width:120px;object-fit:contain}
+  .filehdr{display:flex;align-items:center;justify-content:space-between;margin-top:6px}
+  .log{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;white-space:pre-wrap;max-height:200px;overflow:auto;background:#0b1426;border:1px solid var(--line);border-radius:8px;padding:12px}
+  details{margin-top:6px}
+  summary{cursor:pointer;color:var(--accent);font-size:13px}
+  details ul{margin:8px 0 0;padding-left:20px;color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Signature Checker</h1>
+  <p>Attach a signature image, then check which PDFs / drawings contain it. Compares the picture against every image embedded in each PDF. 100% offline — nothing is uploaded.</p>
+</header>
+
+<main>
+  <div class="panel">
+    <h2>1 · Signature image to look for</h2>
+    <div id="refDrop" class="drop"><strong>Drop a signature image here</strong> or click to choose (PNG / JPG)</div>
+    <input id="refInput" type="file" accept="image/*" hidden>
+    <div id="refMeta" class="refrow" style="display:none"><img id="refImg" class="refimg" alt="reference signature"><div class="hint" id="refInfo"></div></div>
+  </div>
+
+  <div class="panel">
+    <h2>2 · PDFs to check</h2>
+    <div id="drop" class="drop"><strong>Drop one or more PDFs here</strong> or click to choose files<br><span class="hint">Files stay on your computer.</span></div>
+    <input id="file" type="file" accept="application/pdf,.pdf" multiple hidden>
+    <div id="fileList" class="files" style="display:none"></div>
+    <div class="filehdr"><div id="fileSummary" class="meta"></div><button id="clearFiles" class="ghost" style="display:none">Remove all</button></div>
+  </div>
+
+  <div class="panel">
+    <h2>3 · Check</h2>
+    <label for="thr">Match sensitivity — similarity threshold: <span id="thrVal">86%</span></label>
+    <input id="thr" type="range" min="60" max="99" value="86" style="width:260px">
+    <span class="hint">Lower = looser (more matches), higher = stricter.</span>
+    <div class="btns"><button id="runBtn" class="primary">Check signatures</button></div>
+    <div id="status" class="meta"></div>
+  </div>
+
+  <div class="panel" id="resultsPanel" style="display:none">
+    <h2>Results</h2>
+    <div id="results" class="results"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Activity log</h2>
+    <div id="log" class="log">Ready. Attach a signature image and open PDFs to begin.</div>
+    <details>
+      <summary>How it works &amp; limitations</summary>
+      <ul>
+        <li>It extracts every embedded image from each PDF and compares it to your reference using a normalized grayscale correlation score (robust to scaling and re-encoding).</li>
+        <li>Works when the signature is embedded as its own image (JPEG, or uncompressed/Flate). It does not decode JPEG2000, JBIG2 or CCITT-fax images, and it cannot find a signature that is only part of a larger flattened page image, or one drawn as vector strokes.</li>
+        <li>Use the thumbnail and score to confirm — lower the threshold if a known signature is just under the line.</li>
+      </ul>
+    </details>
+  </div>
+</main>
+
+<script>
+"use strict";
+function bytesToStr(b){let s='';const CH=0x8000;for(let i=0;i<b.length;i+=CH)s+=String.fromCharCode.apply(null,b.subarray(i,i+CH));return s;}
+function strToBytes(str){const b=new Uint8Array(str.length);for(let i=0;i<str.length;i++)b[i]=str.charCodeAt(i)&0xff;return b;}
+function concatBytes(arrs){let n=0;for(const a of arrs)n+=a.length;const o=new Uint8Array(n);let p=0;for(const a of arrs){o.set(a,p);p+=a.length;}return o;}
+async function inflate(bytes){let e;for(const fmt of['deflate','deflate-raw']){try{const ds=new DecompressionStream(fmt);const ab=await new Response(new Blob([bytes]).stream().pipeThrough(ds)).arrayBuffer();return new Uint8Array(ab);}catch(x){e=x;}}throw e;}
+async function deflate(bytes){const cs=new CompressionStream('deflate');const ab=await new Response(new Blob([bytes]).stream().pipeThrough(cs)).arrayBuffer();return new Uint8Array(ab);}
+
+// ---------- string operand decode/encode ----------
+function decodeLiteral(s){let out='';for(let i=0;i<s.length;i++){const c=s[i];if(c==='\\'){const n=s[i+1];if(n===undefined)break;if(n==='n'){out+='\n';i++;}else if(n==='r'){out+='\r';i++;}else if(n==='t'){out+='\t';i++;}else if(n==='b'){out+='\b';i++;}else if(n==='f'){out+='\f';i++;}else if(n==='('||n===')'||n==='\\'){out+=n;i++;}else if(n>='0'&&n<='7'){let oct=n;i++;for(let k=0;k<2&&s[i+1]>='0'&&s[i+1]<='7';k++)oct+=s[++i];out+=String.fromCharCode(parseInt(oct,8)&0xff);}else if(n==='\r'||n==='\n'){i++;if(n==='\r'&&s[i+1]==='\n')i++;}else{out+=n;i++;}}else out+=c;}return out;}
+function encodeLiteral(b){let out='';for(let i=0;i<b.length;i++){const code=b.charCodeAt(i)&0xff;const ch=b[i];if(ch==='('||ch===')'||ch==='\\')out+='\\'+ch;else if(code<32||code>126)out+='\\'+code.toString(8).padStart(3,'0');else out+=ch;}return out;}
+function decodeHex(s){let h=s.replace(/[^0-9A-Fa-f]/g,'');if(h.length%2)h+='0';let out='';for(let i=0;i<h.length;i+=2)out+=String.fromCharCode(parseInt(h.substr(i,2),16));return out;}
+function encodeHex(b){let out='';for(let i=0;i<b.length;i++)out+=(b.charCodeAt(i)&0xff).toString(16).padStart(2,'0').toUpperCase();return out;}
+
+// ---------- robust object scanner (balanced dict + /Length) ----------
+function parseDictEnd(s,p){ // s[p..]=='<<' -> index just after matching '>>'
+  let depth=0,i=p;const N=s.length;
+  while(i<N){
+    const c=s[i];
+    if(c==='('){let d=1;i++;while(i<N&&d>0){if(s[i]==='\\'){i+=2;continue;}if(s[i]==='(')d++;else if(s[i]===')')d--;i++;}continue;}
+    if(c==='<'&&s[i+1]==='<'){depth++;i+=2;continue;}
+    if(c==='>'&&s[i+1]==='>'){depth--;i+=2;if(depth===0)return i;continue;}
+    if(c==='<'){i++;while(i<N&&s[i]!=='>')i++;i++;continue;}
+    i++;
+  }
+  return i;
+}
+function skipWsC(s,i){const N=s.length;while(i<N){const c=s[i];if(c===' '||c==='\t'||c==='\r'||c==='\n'||c==='\f'||c==='\0'){i++;continue;}if(c==='%'){while(i<N&&s[i]!=='\n'&&s[i]!=='\r')i++;continue;}break;}return i;}
+
+function scanObjects(s){
+  const startRe=/(\d+)\s+(\d+)\s+obj\b/g;
+  const starts=[]; let m;
+  while((m=startRe.exec(s))){starts.push({num:+m[1],gen:+m[2],at:m.index,bodyAt:m.index+m[0].length});}
+  const startByNum=new Map(); for(const st of starts) startByNum.set(st.num,st);
+  const N=s.length;
+  function resolveInt(num){const st=startByNum.get(num);if(!st)return null;const mm=s.slice(st.bodyAt,st.bodyAt+40).match(/^\s*(\d+)/);return mm?+mm[1]:null;}
+  const objs=[];
+  for(const st of starts){
+    let p=skipWsC(s,st.bodyAt);
+    let dict='',dictEnd=p,isStream=false,streamStart=-1,streamEnd=-1,end;
+    if(s[p]==='<'&&s[p+1]==='<'){
+      dictEnd=parseDictEnd(s,p); dict=s.slice(p,dictEnd);
+      let k=skipWsC(s,dictEnd);
+      if(s.startsWith('stream',k)){
+        isStream=true;
+        let d=k+6; if(s[d]==='\r'&&s[d+1]==='\n')d+=2; else if(s[d]==='\n'||s[d]==='\r')d+=1;
+        streamStart=d;
+        // length
+        let len=null; const lref=dict.match(/\/Length\s+(\d+)\s+(\d+)\s+R/);
+        if(lref) len=resolveInt(+lref[1]); else { const ld=dict.match(/\/Length\s+(\d+)/); if(ld) len=+ld[1]; }
+        if(len!=null && len>=0 && d+len<=N){
+          let es=skipWsC(s,d+len);
+          if(s.startsWith('endstream',es)){ streamEnd=d+len; }
+          else { const f=s.indexOf('endstream',d); streamEnd=f<0?d+len:f; } // length lied: fall back
+        } else {
+          const f=s.indexOf('endstream',d); streamEnd=f<0?N:f;
+        }
+        const eo=s.indexOf('endobj',streamEnd); end=eo<0?N:eo+6;
+      } else {
+        const eo=s.indexOf('endobj',dictEnd); end=eo<0?N:eo+6;
+      }
+    } else {
+      const eo=s.indexOf('endobj',st.bodyAt); end=eo<0?N:eo+6; dictEnd=eo<0?N:eo;
+      dict=s.slice(st.bodyAt,dictEnd);
+    }
+    objs.push({num:st.num,gen:st.gen,start:st.at,dict,dictStart:p,dictEnd,isStream,streamStart,streamEnd,end});
+  }
+  return {objs, startByNum, resolveInt};
+}
+
+// ---------- filters ----------
+function ascii85Decode(s){
+  s=s.replace(/\s/g,''); if(s.endsWith('~>'))s=s.slice(0,-2); if(s.startsWith('<~'))s=s.slice(2);
+  let out=[],i=0;
+  while(i<s.length){
+    if(s[i]==='z'){out.push(0,0,0,0);i++;continue;}
+    let n=Math.min(5,s.length-i),t=0;
+    for(let k=0;k<5;k++){t=t*85+( k<n? (s.charCodeAt(i+k)-33):84);}
+    const bytes=[(t>>>24)&255,(t>>>16)&255,(t>>>8)&255,t&255];
+    for(let k=0;k<n-1;k++)out.push(bytes[k]);
+    i+=n;
+  }
+  return new Uint8Array(out);
+}
+function asciiHexDecode(s){let h=s.replace(/>/,'').replace(/[^0-9A-Fa-f]/g,'');if(h.length%2)h+='0';const out=new Uint8Array(h.length/2);for(let i=0;i<out.length;i++)out[i]=parseInt(h.substr(i*2,2),16);return out;}
+function runLengthDecode(b){const out=[];let i=0;while(i<b.length){const len=b[i++];if(len===128)break;if(len<128){for(let k=0;k<=len&&i<b.length;k++)out.push(b[i++]);}else{const c=b[i++];for(let k=0;k<257-len;k++)out.push(c);}}return new Uint8Array(out);}
+function lzwDecode(b){
+  const out=[];let bitBuf=0,bitCnt=0,pos=0;let codeWidth=9;let dict=[],next;
+  function reset(){dict=[];for(let i=0;i<256;i++)dict[i]=[i];dict[256]=null;dict[257]=null;next=258;codeWidth=9;}
+  reset();let prev=null;
+  while(pos<b.length||bitCnt>=codeWidth){
+    while(bitCnt<codeWidth&&pos<b.length){bitBuf=(bitBuf<<8)|b[pos++];bitCnt+=8;}
+    if(bitCnt<codeWidth)break;
+    const code=(bitBuf>>>(bitCnt-codeWidth))&((1<<codeWidth)-1);bitCnt-=codeWidth;
+    if(code===256){reset();prev=null;continue;}
+    if(code===257)break;
+    let entry;
+    if(dict[code])entry=dict[code];
+    else if(code===next&&prev)entry=prev.concat(prev[0]);
+    else break;
+    for(const v of entry)out.push(v);
+    if(prev){dict[next++]=prev.concat(entry[0]);}
+    prev=entry;
+    if(next+1>=(1<<codeWidth)&&codeWidth<12)codeWidth++;
+  }
+  return new Uint8Array(out);
+}
+function applyPredictor(data,parms){
+  if(!parms)return data;
+  const pred=parms.Predictor||1; if(pred<2)return data;
+  const colors=parms.Colors||1, bpc=parms.BitsPerComponent||8, columns=parms.Columns||1;
+  const bpp=Math.ceil(colors*bpc/8), rowLen=Math.ceil(colors*bpc*columns/8);
+  if(pred===2){ // TIFF
+    const out=data.slice();
+    for(let r=0;r*rowLen<out.length;r++){const off=r*rowLen;for(let i=bpp;i<rowLen&&off+i<out.length;i++)out[off+i]=(out[off+i]+out[off+i-bpp])&255;}
+    return out;
+  }
+  // PNG predictors: each row prefixed by filter-type byte
+  const stride=rowLen+1, rows=Math.floor(data.length/stride), out=new Uint8Array(rows*rowLen);
+  let prevRow=new Uint8Array(rowLen);
+  for(let r=0;r<rows;r++){
+    const ft=data[r*stride]; const row=data.subarray(r*stride+1,r*stride+1+rowLen); const cur=new Uint8Array(rowLen);
+    for(let i=0;i<rowLen;i++){
+      const a=i>=bpp?cur[i-bpp]:0, bb=prevRow[i], c=i>=bpp?prevRow[i-bpp]:0, x=row[i];
+      let v;
+      switch(ft){case 0:v=x;break;case 1:v=x+a;break;case 2:v=x+bb;break;case 3:v=x+((a+bb)>>1);break;
+        case 4:{const p=a+bb-c,pa=Math.abs(p-a),pb=Math.abs(p-bb),pc=Math.abs(p-c);v=x+(pa<=pb&&pa<=pc?a:pb<=pc?bb:c);break;}default:v=x;}
+      cur[i]=v&255;
+    }
+    out.set(cur,r*rowLen); prevRow=cur;
+  }
+  return out;
+}
+function parseFilters(dict){
+  const fm=dict.match(/\/Filter\s*(\/[A-Za-z0-9]+|\[([^\]]*)\])/);
+  if(!fm)return [];
+  if(fm[1][0]==='/')return [fm[1].slice(1)];
+  return [...fm[2].matchAll(/\/([A-Za-z0-9]+)/g)].map(x=>x[1]);
+}
+function parseDecodeParms(dict,n){
+  // returns array aligned with filters; supports << >> single or [ << >> ... ]
+  const res=new Array(n).fill(null);
+  const dpMatch=dict.match(/\/DecodeParms\s*/)||dict.match(/\/DP\s*/);
+  if(!dpMatch)return res;
+  const start=dict.indexOf(dpMatch[0])+dpMatch[0].length;
+  let i=skipWsLocal(dict,start);
+  function parseOne(j){
+    j=skipWsLocal(dict,j);
+    if(dict[j]==='n'&&dict.startsWith('null',j))return [{},j+4];
+    if(dict[j]==='<'&&dict[j+1]==='<'){const e=parseDictEnd(dict,j);return [parseParmDict(dict.slice(j,e)),e];}
+    return [null,j];
+  }
+  if(dict[i]==='['){i++;let k=0;while(i<dict.length&&k<n){i=skipWsLocal(dict,i);if(dict[i]===']'){i++;break;}const [p,nj]=parseOne(i);res[k++]=p;i=nj;}}
+  else {const [p]=parseOne(i);res[0]=p;}
+  return res;
+}
+function skipWsLocal(s,i){while(i<s.length&&/\s/.test(s[i]))i++;return i;}
+function parseParmDict(d){const o={};const get=(k)=>{const m=d.match(new RegExp('/'+k+'\\s+(\\d+)'));return m?+m[1]:undefined;};o.Predictor=get('Predictor');o.Colors=get('Colors');o.BitsPerComponent=get('BitsPerComponent');o.Columns=get('Columns');return o;}
+
+const IMAGE_FILTERS=new Set(['DCTDecode','JPXDecode','CCITTFaxDecode','JBIG2Decode']);
+async function decodeStream(rawBytes,dict){
+  const filters=parseFilters(dict);
+  if(filters.length===0)return {bytes:rawBytes,filters};
+  if(filters.some(f=>IMAGE_FILTERS.has(f)))return {image:true,filters};
+  const parms=parseDecodeParms(dict,filters.length);
+  let data=rawBytes;
+  for(let i=0;i<filters.length;i++){
+    const f=filters[i];
+    if(f==='FlateDecode'){data=await inflate(data);data=applyPredictor(data,parms[i]);}
+    else if(f==='LZWDecode'){data=lzwDecode(data);data=applyPredictor(data,parms[i]);}
+    else if(f==='ASCII85Decode'){data=ascii85Decode(bytesToStr(data));}
+    else if(f==='ASCIIHexDecode'){data=asciiHexDecode(bytesToStr(data));}
+    else if(f==='RunLengthDecode'){data=runLengthDecode(data);}
+    else { return {unsupported:f,filters}; }
+  }
+  return {bytes:data,filters};
+}
+
+// ---------- font decoders ----------
+const WIN_HIGH={0x80:0x20AC,0x82:0x201A,0x83:0x192,0x84:0x201E,0x85:0x2026,0x86:0x2020,0x87:0x2021,0x88:0x2C6,0x89:0x2030,0x8A:0x160,0x8B:0x2039,0x8C:0x152,0x8E:0x17D,0x91:0x2018,0x92:0x2019,0x93:0x201C,0x94:0x201D,0x95:0x2022,0x96:0x2013,0x97:0x2014,0x98:0x2DC,0x99:0x2122,0x9A:0x161,0x9B:0x203A,0x9C:0x153,0x9E:0x17E,0x9F:0x178};
+const GLYPH_COMMON={space:0x20,exclam:0x21,quotedbl:0x22,numbersign:0x23,dollar:0x24,percent:0x25,ampersand:0x26,quotesingle:0x27,parenleft:0x28,parenright:0x29,asterisk:0x2A,plus:0x2B,comma:0x2C,hyphen:0x2D,period:0x2E,slash:0x2F,zero:0x30,one:0x31,two:0x32,three:0x33,four:0x34,five:0x35,six:0x36,seven:0x37,eight:0x38,nine:0x39,colon:0x3A,semicolon:0x3B,less:0x3C,equal:0x3D,greater:0x3E,question:0x3F,at:0x40,bracketleft:0x5B,backslash:0x5C,bracketright:0x5D,underscore:0x5F,braceleft:0x7B,bar:0x7C,braceright:0x7D,degree:0xB0,plusminus:0xB1,multiply:0xD7,minus:0x2212,bullet:0x2022,endash:0x2013,emdash:0x2014};
+function glyphToUni(name){
+  if(!name)return null;
+  if(GLYPH_COMMON[name]!=null)return GLYPH_COMMON[name];
+  let m=name.match(/^uni([0-9A-Fa-f]{4})$/); if(m)return parseInt(m[1],16);
+  m=name.match(/^u([0-9A-Fa-f]{4,6})$/); if(m)return parseInt(m[1],16);
+  if(/^[A-Za-z]$/.test(name))return name.charCodeAt(0);
+  m=name.match(/^([A-Za-z])\.?/); if(name.length===1)return name.charCodeAt(0);
+  return null;
+}
+function hexToCodes(hexStr){ // returns array of {code, nbytes} per token (variable handled by caller using byte length)
+  return hexStr;
+}
+function parseToUnicode(cmapText){
+  // returns {map: Map(code->uniString), codeBytes: inferred 1 or 2}
+  const map=new Map(); let codeBytes=1;
+  const u16=(hex)=>{let s='';for(let i=0;i<hex.length;i+=4)s+=String.fromCharCode(parseInt(hex.substr(i,4),16));return s;};
+  // bfchar
+  for(const blk of cmapText.matchAll(/beginbfchar([\s\S]*?)endbfchar/g)){
+    for(const mm of blk[1].matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g)){
+      const src=mm[1]; if(src.length/2>codeBytes)codeBytes=src.length/2;
+      map.set(parseInt(src,16),u16(mm[2]));
+    }
+  }
+  // bfrange
+  for(const blk of cmapText.matchAll(/beginbfrange([\s\S]*?)endbfrange/g)){
+    const body=blk[1];
+    // form: <lo> <hi> <dst>
+    for(const mm of body.matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g)){
+      const lo=parseInt(mm[1],16),hi=parseInt(mm[2],16); if(mm[1].length/2>codeBytes)codeBytes=mm[1].length/2;
+      let dst=parseInt(mm[3],16);
+      for(let c=lo;c<=hi;c++){map.set(c,String.fromCharCode(dst+(c-lo)));}
+    }
+    // form: <lo> <hi> [<d1> <d2> ...]
+    for(const mm of body.matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*\[([\s\S]*?)\]/g)){
+      const lo=parseInt(mm[1],16); if(mm[1].length/2>codeBytes)codeBytes=mm[1].length/2;
+      const dsts=[...mm[3].matchAll(/<([0-9A-Fa-f]+)>/g)];
+      dsts.forEach((d,k)=>map.set(lo+k,u16(d[1])));
+    }
+  }
+  return {map,codeBytes};
+}
+// decoder interface: {toUnits(rawLatin1)->[{bytes,uni}], encodeChar(ch)->bytesStr|null, encoded:boolean}
+function identityDecoder(){
+  return {encoded:false,
+    toUnits:(raw)=>{const u=[];for(let i=0;i<raw.length;i++)u.push({bytes:raw[i],uni:raw[i]});return u;},
+    encodeChar:(ch)=>ch.charCodeAt(0)<256?ch:null};
+}
+function simpleDecoder(code2uni){ // Map code(int 0-255)->uniString
+  const uni2code=new Map(); for(const [c,u] of code2uni){ if(!uni2code.has(u))uni2code.set(u,c); }
+  return {encoded:true,
+    toUnits:(raw)=>{const u=[];for(let i=0;i<raw.length;i++){const c=raw.charCodeAt(i);u.push({bytes:raw[i],uni:code2uni.has(c)?code2uni.get(c):raw[i]});}return u;},
+    // conservative: only chars the subset font is known to contain are encodable
+    encodeChar:(ch)=>{if(uni2code.has(ch))return String.fromCharCode(uni2code.get(ch));return null;}};
+}
+function cidDecoder(map,codeBytes){
+  const uni2code=new Map(); for(const [c,u] of map){ if(!uni2code.has(u))uni2code.set(u,c); }
+  const nb=codeBytes||2;
+  return {encoded:true,
+    toUnits:(raw)=>{const u=[];for(let i=0;i+nb<=raw.length;i+=nb){let code=0;for(let k=0;k<nb;k++)code=(code<<8)|raw.charCodeAt(i+k);u.push({bytes:raw.substr(i,nb),uni:map.has(code)?map.get(code):'�'});}return u;},
+    encodeChar:(ch)=>{if(uni2code.has(ch)){const code=uni2code.get(ch);let s='';for(let k=nb-1;k>=0;k--)s+=String.fromCharCode((code>>(8*k))&255);return s;}return null;}};
+}
+
+async function buildFontDecoders(parsed, s){
+  // returns Map(fontObjNum -> decoder)
+  const {objs,startByNum}=parsed;
+  const byNum=new Map(); for(const o of objs)byNum.set(o.num,o);
+  const decoders=new Map();
+  for(const o of objs){
+    if(!/\/Type\s*\/Font/.test(o.dict))continue;
+    const isType0=/\/Subtype\s*\/Type0/.test(o.dict);
+    let decoder=null;
+    // ToUnicode
+    const tu=o.dict.match(/\/ToUnicode\s+(\d+)\s+(\d+)\s+R/);
+    if(tu){
+      const tobj=byNum.get(+tu[1]);
+      if(tobj&&tobj.isStream){
+        try{
+          const raw=strToBytes(s.slice(tobj.streamStart,tobj.streamEnd));
+          const dec=await decodeStream(raw,tobj.dict);
+          if(dec.bytes){const {map,codeBytes}=parseToUnicode(bytesToStr(dec.bytes));
+            if(map.size){decoder=isType0?cidDecoder(map,codeBytes):(codeBytes>1?cidDecoder(map,codeBytes):simpleDecoder(map));}}
+        }catch(e){}
+      }
+    }
+    // Differences (simple fonts) if no decoder yet
+    if(!decoder&&!isType0){
+      const code2uni=new Map();
+      const encMatch=o.dict.match(/\/Encoding\s+(\d+)\s+(\d+)\s+R/);
+      let encDict=o.dict;
+      if(encMatch){const eo=byNum.get(+encMatch[1]);if(eo)encDict=eo.dict;}
+      const diff=encDict.match(/\/Differences\s*\[([\s\S]*?)\]/);
+      if(diff){
+        let cur=0; const toks=diff[1].match(/\d+|\/[^\s\/\]]+/g)||[];
+        for(const t of toks){ if(/^\d+$/.test(t))cur=+t; else {const u=glyphToUni(t.slice(1)); if(u!=null)code2uni.set(cur,String.fromCharCode(u)); cur++;} }
+      }
+      if(code2uni.size)decoder=simpleDecoder(code2uni);
+    }
+    if(decoder)decoders.set(o.num,decoder);
+  }
+  // Determine which fonts are subset/embedded — for those, a replacement glyph
+  // only renders if its code is already used in the document (the subset only
+  // embeds glyphs that are drawn). Non-embedded base fonts are treated as full.
+  const guarded=new Map();
+  for(const o of objs){
+    if(!/\/Type\s*\/Font/.test(o.dict))continue;
+    guarded.set(o.num, isFontGuarded(o, byNum));
+  }
+  return {decoders,byNum,guarded};
+}
+function isFontGuarded(o, byNum){
+  const base=o.dict.match(/\/BaseFont\s*\/([A-Za-z0-9+\-]+)/);
+  if(base && /^[A-Z]{6}\+/.test(base[1]))return true;          // subset tag ABCDEF+
+  if(/\/FontFile[123]?\b/.test(o.dict))return true;            // embedded program
+  if(/\/Subtype\s*\/Type0/.test(o.dict)){
+    const df=o.dict.match(/\/DescendantFonts\s*\[\s*(\d+)\s+\d+\s+R/)||o.dict.match(/\/DescendantFonts\s+(\d+)\s+\d+\s+R/);
+    if(df){const d=byNum.get(+df[1]);if(d){if(/\/FontFile[123]?\b/.test(d.dict))return true;const b2=d.dict.match(/\/BaseFont\s*\/([A-Za-z0-9+\-]+)/);if(b2&&/^[A-Z]{6}\+/.test(b2[1]))return true;}}
+  }
+  return false;
+}
+
+function parseResourcesFonts(dict, byNum, s){
+  // dict may contain /Resources << /Font << /F1 5 0 R >> >> or /Resources N 0 R
+  let resDict=null;
+  const rref=dict.match(/\/Resources\s+(\d+)\s+(\d+)\s+R/);
+  if(rref){const ro=byNum.get(+rref[1]); if(ro)resDict=ro.dict;}
+  else { const ri=dict.indexOf('/Resources'); if(ri>=0){let j=skipWsLocal(dict,ri+10); if(dict[j]==='<'&&dict[j+1]==='<'){resDict=dict.slice(j,parseDictEnd(dict,j));}} }
+  if(!resDict)return null;
+  const fi=resDict.indexOf('/Font'); if(fi<0)return null;
+  let fontDict=null;
+  const fref=resDict.slice(fi).match(/^\/Font\s+(\d+)\s+(\d+)\s+R/);
+  if(fref){const fo=byNum.get(+fref[1]);if(fo)fontDict=fo.dict;}
+  else { let j=skipWsLocal(resDict,fi+5); if(resDict[j]==='<'&&resDict[j+1]==='<')fontDict=resDict.slice(j,parseDictEnd(resDict,j)); }
+  if(!fontDict)return null;
+  const map=new Map();
+  for(const mm of fontDict.matchAll(/\/([^\s\/]+)\s+(\d+)\s+(\d+)\s+R/g))map.set(mm[1],+mm[2]);
+  return map;
+}
+
+function mapContentToFonts(parsed, byNum, s){
+  // returns Map(contentObjNum -> Map(fontName->fontObjNum)) using page + form resources
+  const {objs}=parsed;
+  const result=new Map();
+  for(const o of objs){
+    const isPage=/\/Type\s*\/Page\b/.test(o.dict);
+    const isForm=/\/Subtype\s*\/Form/.test(o.dict);
+    if(!isPage&&!isForm)continue;
+    const fonts=parseResourcesFonts(o.dict, byNum, s); if(!fonts)continue;
+    if(isForm){ result.set(o.num, fonts); continue; }
+    // page: /Contents N 0 R or [N 0 R ...]
+    const cm=o.dict.match(/\/Contents\s+(\d+)\s+(\d+)\s+R/);
+    if(cm){ result.set(+cm[1], fonts); }
+    else { const arr=o.dict.match(/\/Contents\s*\[([^\]]*)\]/); if(arr){for(const r of arr[1].matchAll(/(\d+)\s+\d+\s+R/g))result.set(+r[1],fonts);} }
+  }
+  return result;
+}
+
+// ---------- tokenizer + font-aware run replace ----------
+function buildMatcher(find,caseSensitive,wholeWord){const esc=find.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');let pat=esc;if(wholeWord)pat='(?<![A-Za-z0-9])'+pat+'(?![A-Za-z0-9])';return new RegExp(pat,caseSensitive?'g':'gi');}
+const isWS=c=>c===' '||c==='\t'||c==='\r'||c==='\n'||c==='\f'||c==='\0';
+const isDelim=c=>c==='('||c===')'||c==='<'||c==='>'||c==='['||c===']'||c==='{'||c==='}'||c==='/'||c==='%';
+function tokenize(s){const toks=[];let i=0;const N=s.length;while(i<N){const c=s[i];
+  if(isWS(c)){let j=i+1;while(j<N&&isWS(s[j]))j++;toks.push({t:'ws',raw:s.slice(i,j)});i=j;continue;}
+  if(c==='%'){let j=i+1;while(j<N&&s[j]!=='\n'&&s[j]!=='\r')j++;toks.push({t:'comment',raw:s.slice(i,j)});i=j;continue;}
+  if(c==='('){let depth=1,j=i+1;while(j<N&&depth>0){const cc=s[j];if(cc==='\\'){j+=2;continue;}if(cc==='(')depth++;else if(cc===')'){depth--;if(depth===0){j++;break;}}j++;}toks.push({t:'str',kind:'lit',raw:s.slice(i,j)});i=j;continue;}
+  if(c==='<'&&s[i+1]==='<'){toks.push({t:'op',raw:'<<'});i+=2;continue;}
+  if(c==='>'&&s[i+1]==='>'){toks.push({t:'op',raw:'>>'});i+=2;continue;}
+  if(c==='<'){let j=i+1;while(j<N&&s[j]!=='>')j++;if(j<N)j++;toks.push({t:'str',kind:'hex',raw:s.slice(i,j)});i=j;continue;}
+  if(c==='['){toks.push({t:'arr-open',raw:'['});i++;continue;}
+  if(c===']'){toks.push({t:'arr-close',raw:']'});i++;continue;}
+  if(c==='/'){let j=i+1;while(j<N&&!isWS(s[j])&&!isDelim(s[j]))j++;toks.push({t:'name',raw:s.slice(i,j)});i=j;continue;}
+  let j=i;while(j<N&&!isWS(s[j])&&!isDelim(s[j]))j++;if(j===i){toks.push({t:'op',raw:s[i]});i++;continue;}
+  const v=s.slice(i,j);toks.push({t:/^[+-]?(\d+\.?\d*|\.\d+)$/.test(v)?'num':'op',raw:v});i=j;}
+  return toks;}
+function strInner(tok){return tok.raw.slice(1,-1);}
+function decodeStrTok(tok){return tok.kind==='hex'?decodeHex(strInner(tok)):decodeLiteral(strInner(tok));}
+function encodeStrTok(kind,text){return kind==='hex'?'<'+encodeHex(text)+'>':'('+encodeLiteral(text)+')';}
+function skipWs(toks,p){while(p<toks.length&&(toks[p].t==='ws'||toks[p].t==='comment'))p++;return p;}
+function matchShowAt(toks,p){const t=toks[p];if(!t)return null;
+  if(t.t==='str'){const op=skipWs(toks,p+1);const o=toks[op];if(o&&o.t==='op'&&(o.raw==='Tj'||o.raw==="'"||o.raw==='"'))return {strIdx:[p],endIdx:op};return null;}
+  if(t.t==='arr-open'){let q=p+1,depth=1;while(q<toks.length&&depth>0){if(toks[q].t==='arr-open')depth++;else if(toks[q].t==='arr-close'){depth--;if(depth===0)break;}q++;}const op=skipWs(toks,q+1);const o=toks[op];if(o&&o.t==='op'&&o.raw==='TJ'){const strIdx=[];for(let k=p+1;k<q;k++)if(toks[k].t==='str')strIdx.push(k);return {strIdx,endIdx:op};}return null;}
+  return null;}
+
+// Collect the n numeric operands immediately preceding token index i.
+function prevNums(toks,i,n){const out=[];let k=i-1;while(k>=0&&out.length<n){const t=toks[k];if(t.t==='ws'||t.t==='comment'){k--;continue;}if(t.t==='num'){out.push(parseFloat(t.raw));k--;continue;}break;}return out.reverse();}
+
+// Group text-showing operators into visual lines by tracking the text matrix.
+// Characters placed on the same baseline (incl. per-character Td/Tm spacing,
+// as title-block drawing numbers use) are reconstructed into one group, so long
+// strings split across many positioned Tj operators are found and replaced.
+// A group also breaks on a font change so each group has one decoder.
+function groupShowRuns(toks,fontMap,decoders){
+  const groups=[];
+  let curDecoder=identityDecoder(),curObj=null,fontSize=10;
+  let baseline=0,leading=0;
+  let group=null;
+  const tol=()=>Math.max(1,0.3*(Math.abs(fontSize)||10));
+  const flush=()=>{ if(group&&group.strTokens.length)groups.push(group); group=null; };
+  const start=()=>{ group={decoder:curDecoder,fontObj:curObj,fontSize,baseline,strTokens:[]}; };
+  let i=0;
+  while(i<toks.length){
+    const t=toks[i];
+    if(t.t==='op'){
+      const op=t.raw;
+      if(op==='BT'){flush();baseline=0;leading=0;i++;continue;}
+      if(op==='ET'){flush();i++;continue;}
+      if(op==='Tf'){let kk=i-1,nameTok=null,sizeTok=null;while(kk>=0&&i-kk<10){const tk=toks[kk];if(tk.t==='num'&&!sizeTok&&!nameTok)sizeTok=tk;if(tk.t==='name'){nameTok=tk;break;}kk--;}if(sizeTok)fontSize=parseFloat(sizeTok.raw)||fontSize;if(nameTok){curObj=fontMap.get(nameTok.raw.slice(1));curDecoder=(curObj!=null&&decoders.get(curObj))||identityDecoder();}flush();i++;continue;}
+      if(op==='Tm'){const a=prevNums(toks,i,6);if(a.length===6)baseline=a[5];i++;continue;}
+      if(op==='Td'||op==='TD'){const a=prevNums(toks,i,2);if(a.length===2){if(op==='TD')leading=-a[1];baseline+=a[1];}i++;continue;}
+      if(op==='T*'){baseline-=leading;i++;continue;}
+      if(op==='TL'){const a=prevNums(toks,i,1);if(a.length===1)leading=a[0];i++;continue;}
+    }
+    const show=matchShowAt(toks,i);
+    if(show){
+      const opRaw=toks[show.endIdx].raw;
+      if(opRaw==="'"||opRaw==='"')baseline-=leading; // these move to next line first
+      if(group&&curObj===group.fontObj&&Math.abs(baseline-group.baseline)<=tol()){
+        for(const idx of show.strIdx)group.strTokens.push(toks[idx]);
+      }else{
+        flush();start();group.baseline=baseline;for(const idx of show.strIdx)group.strTokens.push(toks[idx]);
+      }
+      i=show.endIdx+1;continue;
+    }
+    i++;
+  }
+  flush();
+  return groups;
+}
+
+function processContent(content,find,replace,opts,fontMap,decoders,canEncodeCode){
+  const toks=tokenize(content);
+  let found=0,replaced=0,unreplaceable=0;const samples=[];const missing=new Set();
+  fontMap=fontMap||new Map(); decoders=decoders||new Map(); canEncodeCode=canEncodeCode||(()=>true);
+  for(const g of groupShowRuns(toks,fontMap,decoders)){
+    const objNum=g.fontObj;
+    const res=replaceRun(g.strTokens,find,replace,opts,g.decoder,(cb)=>canEncodeCode(objNum,cb));
+    found+=res.found; replaced+=res.replaced; unreplaceable+=res.unreplaceable;
+    for(const smp of res.samples){if(samples.length<80)samples.push(smp);}
+    for(const ch of res.missing)missing.add(ch);
+  }
+  let out='';for(const t of toks)out+=t.raw;
+  return {text:out,found,replaced,unreplaceable,samples,missing};
+}
+
+// Replace within one text group. Matches are reconstructed across all the
+// group's string fragments; the replacement is distributed back PER CHARACTER
+// into the original fragments so existing per-glyph positioning is preserved.
+function replaceRun(strTokens,find,replace,opts,decoder,canEncode){
+  canEncode=canEncode||(()=>true);
+  const units=[]; // {frag,bytes,uni}
+  strTokens.forEach((tok,fi)=>{const raw=decodeStrTok(tok);for(const u of decoder.toUnits(raw))units.push({frag:fi,bytes:u.bytes,uni:u.uni});});
+  let L='';const unitAt=[];
+  units.forEach((u,ui)=>{for(const ch of u.uni){L+=ch;unitAt.push(ui);}});
+  const re=buildMatcher(find,opts.caseSensitive,opts.wholeWord);
+  const matches=[];let m;while((m=re.exec(L))){matches.push({s:m.index,e:m.index+m[0].length});if(m.index===re.lastIndex)re.lastIndex++;}
+  if(!matches.length)return {found:0,replaced:0,unreplaceable:0,samples:[],missing:[]};
+  const samples=[];
+  for(const mt of matches){const from=Math.max(0,mt.s-28),to=Math.min(L.length,mt.e+28);samples.push({before:L.slice(from,mt.s),hit:L.slice(mt.s,mt.e),after:L.slice(mt.e,to)});}
+  // encode replacement -> one byte-string per replacement character
+  const repUnits=[];let encodable=true;const missing=[];
+  for(const ch of replace){const b=decoder.encodeChar(ch);if(b==null||!canEncode(b)){encodable=false;missing.push(ch);}else repUnits.push(b);}
+  if(!encodable)return {found:matches.length,replaced:0,unreplaceable:matches.length,samples,missing};
+  const override=new Map();const changedFrag=new Set();
+  for(const mt of matches){
+    const uStart=unitAt[mt.s],uEnd=unitAt[Math.max(mt.s,mt.e-1)],nU=uEnd-uStart+1;
+    for(let k=0;k<nU;k++){
+      const ui=uStart+k;
+      const put = k<nU-1 ? (k<repUnits.length?repUnits[k]:'') : repUnits.slice(k).join('');
+      override.set(ui,put); changedFrag.add(units[ui].frag);
+    }
+  }
+  const newRaw=strTokens.map(()=> null);
+  for(const fi of changedFrag)newRaw[fi]='';
+  for(let ui=0;ui<units.length;ui++){const fi=units[ui].frag;if(newRaw[fi]===null)continue;newRaw[fi]+=override.has(ui)?override.get(ui):units[ui].bytes;}
+  strTokens.forEach((tok,fi)=>{if(changedFrag.has(fi))tok.raw=encodeStrTok(tok.kind,newRaw[fi]);});
+  return {found:matches.length,replaced:matches.length,unreplaceable:0,samples,missing:[]};
+}
+
+function extractText(content,fontMap,decoders){
+  const toks=tokenize(content);
+  const lines=[];
+  for(const g of groupShowRuns(toks,fontMap,decoders)){
+    let txt='';
+    for(const tok of g.strTokens){const raw=decodeStrTok(tok);for(const u of g.decoder.toUnits(raw))txt+=u.uni;}
+    if(txt)lines.push(txt);
+  }
+  return lines.join('\n');
+}
+
+// ---------- re-encode helpers + incremental update ----------
+function setLength(dict,len){if(/\/Length\s+(\d+\s+\d+\s+R|\d+)/.test(dict))return dict.replace(/\/Length\s+(?:\d+\s+\d+\s+R|\d+)/,'/Length '+len);return dict.replace(/>>\s*$/,' /Length '+len+' >>');}
+function stripDecodeParms(dict){return dict.replace(/\/DecodeParms\s*<<[^>]*>>/g,'').replace(/\/DecodeParms\s*\[[^\]]*\]/g,'').replace(/\/DecodeParms\s+\d+\s+\d+\s+R/g,'').replace(/\/DP\s*<<[^>]*>>/g,'');}
+function setFilterFlate(dict){
+  if(/\/Filter\s*(\/[A-Za-z0-9]+|\[[^\]]*\])/.test(dict))return dict.replace(/\/Filter\s*(?:\/[A-Za-z0-9]+|\[[^\]]*\])/,'/Filter /FlateDecode');
+  return dict.replace(/>>\s*$/,' /Filter /FlateDecode >>');
+}
+
+// Walk show operators tracking the active font; call fn(decoder, fontObjNum, strTokens).
+function forEachShowRun(content, fontMap, decoders, fn){
+  const toks=tokenize(content); let i=0; let curDecoder=identityDecoder(); let curObj=null;
+  while(i<toks.length){
+    if(toks[i].t==='op'&&toks[i].raw==='Tf'){let k=i-1,nameTok=null;while(k>=0&&i-k<8){if(toks[k].t==='name'){nameTok=toks[k];break;}k--;}if(nameTok){curObj=fontMap.get(nameTok.raw.slice(1));curDecoder=(curObj!=null&&decoders.get(curObj))||identityDecoder();}i++;continue;}
+    const sj=skipWs(toks,i); const show=matchShowAt(toks,sj);
+    if(show){fn(curDecoder,curObj,show.strIdx.map(idx=>toks[idx]));i=show.endIdx+1;}
+    else i++;
+  }
+}
+
+async function runOverContentStreams(pdfBytes,mode,find,replace,opts){
+  const s=bytesToStr(pdfBytes);
+  const parsed=scanObjects(s);
+  const {decoders,byNum,guarded}=await buildFontDecoders(parsed,s);
+  const contentFonts=mapContentToFonts(parsed,byNum,s);
+  const result={streamsSeen:0,contentStreams:0,totalMatches:0,unreplaceable:0,samples:[],modified:[],skipped:0,extracted:[],missingChars:new Set()};
+
+  // Pass 1: decode each content stream once and collect, per font, the set of
+  // code bytes that are actually drawn (= glyphs the subset is known to embed).
+  const streams=[]; const usedCodes=new Map();
+  for(const o of parsed.objs){
+    if(!o.isStream)continue;result.streamsSeen++;
+    const raw=strToBytes(s.slice(o.streamStart,o.streamEnd));
+    let dec;try{dec=await decodeStream(raw,o.dict);}catch(e){result.skipped++;continue;}
+    if(dec.image||dec.unsupported||!dec.bytes){result.skipped++;continue;}
+    const content=bytesToStr(dec.bytes);
+    if(!/\bBT\b|\bTj\b|\bTJ\b|\bTf\b|\bTd\b|\bTD\b|\bTm\b/.test(content))continue;
+    result.contentStreams++;
+    const fontMap=contentFonts.get(o.num)||new Map();
+    streams.push({o,content,fontMap});
+    forEachShowRun(content,fontMap,decoders,(decoder,objNum,strTokens)=>{
+      if(objNum==null)return; let set=usedCodes.get(objNum); if(!set){set=new Set();usedCodes.set(objNum,set);}
+      for(const tok of strTokens){const raw2=tok.kind==='hex'?decodeHex(tok.raw.slice(1,-1)):decodeLiteral(tok.raw.slice(1,-1));for(const u of decoder.toUnits(raw2))set.add(u.bytes);}
+    });
+  }
+  // canEncodeCode: a replacement code only renders if the font isn't a subset,
+  // or the code is already used somewhere (its glyph is embedded).
+  const canEncodeCode=(objNum,codeBytes)=>{ if(objNum==null)return true; if(!guarded.get(objNum))return true; const set=usedCodes.get(objNum); return set?set.has(codeBytes):false; };
+
+  // Pass 2
+  for(const {o,content,fontMap} of streams){
+    if(mode==='extract'){const t=extractText(content,fontMap,decoders).replace(/\s+/g,' ').trim();if(t)result.extracted.push({num:o.num,text:t});continue;}
+    const r=processContent(content,find,replace,opts,fontMap,decoders,canEncodeCode);
+    if(r.unreplaceable)result.unreplaceable+=r.unreplaceable;
+    for(const ch of r.missing)result.missingChars.add(ch);
+    const tally = mode==='apply' ? r.replaced : r.found;
+    if((r.found>0 && mode!=='apply') || (mode==='apply' && r.replaced>0)){
+      result.totalMatches+=tally;
+      for(const smp of r.samples){if(result.samples.length<80)result.samples.push(smp);}
+      if(mode==='apply'){
+        const newContent=strToBytes(r.text);
+        const newStream=await deflate(newContent);
+        let nd=setLength(setFilterFlate(stripDecodeParms(o.dict)),newStream.length);
+        result.modified.push({num:o.num,gen:o.gen,dict:nd,stream:newStream});
+      }
+    }
+  }
+  return result;
+}
+
+
+/* ===================== Signature Checker UI ===================== */
+const $=id=>document.getElementById(id);
+const els={refDrop:$('refDrop'),refInput:$('refInput'),refMeta:$('refMeta'),refImg:$('refImg'),refInfo:$('refInfo'),
+  drop:$('drop'),file:$('file'),fileList:$('fileList'),fileSummary:$('fileSummary'),clearFiles:$('clearFiles'),
+  thr:$('thr'),thrVal:$('thrVal'),runBtn:$('runBtn'),status:$('status'),resultsPanel:$('resultsPanel'),results:$('results'),log:$('log')};
+
+let files=[]; let nextId=1; let refFeature=null; let refDims=null;
+const FEAT=32; // feature grid size
+
+function log(msg,kind){const t=new Date().toLocaleTimeString();const p=kind==='err'?'✗ ':kind==='ok'?'✓ ':'· ';els.log.textContent+=`\n[${t}] ${p}${msg}`;els.log.scrollTop=els.log.scrollHeight;}
+function setStatus(h){els.status.innerHTML=h;}
+function escapeHtml(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function fmtSize(n){return n<1048576?(n/1024).toFixed(0)+' KB':(n/1048576).toFixed(1)+' MB';}
+
+/* ---------- image feature helpers ---------- */
+function bitmapToFeature(bmp){
+  const c=document.createElement('canvas');c.width=FEAT;c.height=FEAT;const ctx=c.getContext('2d');
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,FEAT,FEAT);ctx.drawImage(bmp,0,0,FEAT,FEAT);
+  const d=ctx.getImageData(0,0,FEAT,FEAT).data;const f=new Float32Array(FEAT*FEAT);
+  for(let i=0;i<FEAT*FEAT;i++)f[i]=0.299*d[i*4]+0.587*d[i*4+1]+0.114*d[i*4+2];
+  return f;
+}
+function rawGray(samples,w,h,comps,bpc,x,y){
+  if(bpc===1){const rb=Math.ceil(w/8);const byte=samples[y*rb+(x>>3)]||0;return ((byte>>(7-(x&7)))&1)?255:0;}
+  const idx=(y*w+x)*comps;
+  if(comps>=4){const c=samples[idx],m=samples[idx+1],ye=samples[idx+2],k=samples[idx+3];const r=255-Math.min(255,c+k),g=255-Math.min(255,m+k),b=255-Math.min(255,ye+k);return 0.299*r+0.587*g+0.114*b;}
+  if(comps===3)return 0.299*samples[idx]+0.587*samples[idx+1]+0.114*samples[idx+2];
+  return samples[idx];
+}
+function rawToFeature(samples,w,h,comps,bpc){
+  // box-average each cell over its source block (scale-robust, matches the
+  // smoothing the canvas path uses for JPEG images)
+  const f=new Float32Array(FEAT*FEAT);
+  for(let gy=0;gy<FEAT;gy++){
+    const y0=Math.floor(gy/FEAT*h), y1=Math.max(y0+1,Math.floor((gy+1)/FEAT*h));
+    for(let gx=0;gx<FEAT;gx++){
+      const x0=Math.floor(gx/FEAT*w), x1=Math.max(x0+1,Math.floor((gx+1)/FEAT*w));
+      let sum=0,cnt=0;
+      for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){sum+=rawGray(samples,w,h,comps,bpc,x,y);cnt++;}
+      f[gy*FEAT+gx]=cnt?sum/cnt:0;
+    }
+  }
+  return f;
+}
+function normalize(f){let mean=0;for(const v of f)mean+=v;mean/=f.length;let ss=0;const g=new Float32Array(f.length);for(let i=0;i<f.length;i++){g[i]=f[i]-mean;ss+=g[i]*g[i];}return {g,energy:ss};}
+function correlate(refN,f){const {g,energy}=normalize(f);if(energy<1e-3||refN.energy<1e-3)return 0;let s=0;for(let i=0;i<g.length;i++)s+=g[i]*refN.g[i];return s/Math.sqrt(energy*refN.energy);}
+
+function bitmapToThumb(bmp,w,h){const mw=120,scale=Math.min(1,mw/w);const tw=Math.max(1,Math.round(w*scale)),th=Math.max(1,Math.round(h*scale));const c=document.createElement('canvas');c.width=tw;c.height=th;const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,tw,th);ctx.drawImage(bmp,0,0,tw,th);return c.toDataURL('image/png');}
+function rawToThumb(samples,w,h,comps,bpc){const mw=120,scale=Math.min(1,mw/w);const tw=Math.max(1,Math.round(w*scale)),th=Math.max(1,Math.round(h*scale));const c=document.createElement('canvas');c.width=tw;c.height=th;const ctx=c.getContext('2d');const img=ctx.createImageData(tw,th);for(let y=0;y<th;y++)for(let x=0;x<tw;x++){const sx=Math.min(w-1,Math.floor(x/scale)),sy=Math.min(h-1,Math.floor(y/scale));const v=rawGray(samples,w,h,comps,bpc,sx,sy);const o=(y*tw+x)*4;img.data[o]=img.data[o+1]=img.data[o+2]=v;img.data[o+3]=255;}ctx.putImageData(img,0,0);return c.toDataURL('image/png');}
+
+/* ---------- PDF image extraction ---------- */
+async function decodeImageStream(rawBytes,dict){
+  const filters=parseFilters(dict);const parms=parseDecodeParms(dict,filters.length);
+  let data=rawBytes;
+  for(let i=0;i<filters.length;i++){
+    const f=filters[i];
+    if(f==='FlateDecode')data=applyPredictor(await inflate(data),parms[i]);
+    else if(f==='LZWDecode')data=applyPredictor(lzwDecode(data),parms[i]);
+    else if(f==='ASCII85Decode')data=ascii85Decode(bytesToStr(data));
+    else if(f==='ASCIIHexDecode')data=asciiHexDecode(bytesToStr(data));
+    else if(f==='RunLengthDecode')data=runLengthDecode(data);
+    else if(f==='DCTDecode')return {kind:'jpeg',bytes:data};
+    else if(f==='JPXDecode')return {kind:'jpx'};
+    else return {kind:'unsupported',filter:f};
+  }
+  return {kind:'raw',bytes:data};
+}
+async function bestMatchInPdf(pdfBytes,refN){
+  const s=bytesToStr(pdfBytes);const parsed=scanObjects(s);
+  let best={sim:-1,thumb:null,w:0,h:0,obj:0};let scanned=0,skipped=0;
+  for(const o of parsed.objs){
+    if(!o.isStream)continue;
+    if(!/\/Subtype\s*\/Image/.test(o.dict))continue;
+    const w=+((o.dict.match(/\/Width\s+(\d+)/)||[])[1]||0), h=+((o.dict.match(/\/Height\s+(\d+)/)||[])[1]||0);
+    if(!w||!h)continue;
+    const bpc=+((o.dict.match(/\/BitsPerComponent\s+(\d+)/)||[])[1]||8);
+    const raw=strToBytes(s.slice(o.streamStart,o.streamEnd));
+    let dec;try{dec=await decodeImageStream(raw,o.dict);}catch(e){skipped++;continue;}
+    let feature=null,thumb=null;
+    try{
+      if(dec.kind==='jpeg'){const bmp=await createImageBitmap(new Blob([dec.bytes],{type:'image/jpeg'}));feature=bitmapToFeature(bmp);if(typeof bmp.close==='function'){/*keep for thumb*/}thumb=bitmapToThumb(bmp,w,h);}
+      else if(dec.kind==='raw'){const comps=bpc===1?1:Math.max(1,Math.round(dec.bytes.length/(w*h)));feature=rawToFeature(dec.bytes,w,h,comps,bpc);thumb=rawToThumb(dec.bytes,w,h,comps,bpc);}
+      else {skipped++;continue;}
+    }catch(e){skipped++;continue;}
+    scanned++;
+    const sim=correlate(refN,feature);
+    if(sim>best.sim)best={sim,thumb,w,h,obj:o.num};
+  }
+  return {best,scanned,skipped};
+}
+
+/* ---------- reference image ---------- */
+async function loadReference(file){
+  try{
+    const bmp=await createImageBitmap(file);
+    refDims={w:bmp.width,h:bmp.height};
+    refFeature=normalize(bitmapToFeature(bmp));
+    els.refImg.src=bitmapToThumb(bmp,bmp.width,bmp.height);
+    els.refMeta.style.display='flex';
+    els.refInfo.textContent=`${file.name} — ${bmp.width}×${bmp.height}px`;
+    log(`Reference signature loaded (${bmp.width}×${bmp.height}).`,'ok');
+  }catch(e){log('Could not read that image: '+e.message,'err');refFeature=null;}
+}
+els.refDrop.addEventListener('click',()=>els.refInput.click());
+els.refInput.addEventListener('change',e=>{if(e.target.files[0])loadReference(e.target.files[0]);els.refInput.value='';});
+['dragenter','dragover'].forEach(ev=>els.refDrop.addEventListener(ev,e=>{e.preventDefault();els.refDrop.classList.add('drag');}));
+['dragleave','drop'].forEach(ev=>els.refDrop.addEventListener(ev,e=>{e.preventDefault();els.refDrop.classList.remove('drag');}));
+els.refDrop.addEventListener('drop',e=>{const f=[...e.dataTransfer.files].find(x=>/^image\//.test(x.type));if(f)loadReference(f);});
+
+/* ---------- files ---------- */
+function renderFiles(){
+  if(!files.length){els.fileList.style.display='none';els.clearFiles.style.display='none';els.fileSummary.textContent='';return;}
+  els.fileList.style.display='block';els.clearFiles.style.display='inline-block';
+  els.fileList.innerHTML=files.map(f=>`<div class="frow"><span class="nm" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span><span class="sz">${fmtSize(f.bytes.length)}</span><button class="rm" data-rm="${f.id}" title="Remove">✕</button></div>`).join('');
+  els.fileSummary.textContent=`${files.length} file${files.length>1?'s':''} loaded`;
+}
+function addFiles(list){
+  const arr=[...list].filter(f=>/pdf$/i.test(f.name)||f.type==='application/pdf');
+  if(!arr.length){log('No PDF files in that selection.','err');return;}
+  let pending=arr.length;
+  arr.forEach(file=>{const fr=new FileReader();fr.onload=()=>{files.push({id:nextId++,name:file.name,bytes:new Uint8Array(fr.result)});log(`Loaded "${file.name}".`,'ok');if(--pending===0)renderFiles();else renderFiles();};fr.onerror=()=>{log(`Failed to read "${file.name}".`,'err');if(--pending===0)renderFiles();};fr.readAsArrayBuffer(file);});
+}
+els.drop.addEventListener('click',()=>els.file.click());
+els.file.addEventListener('change',e=>{addFiles(e.target.files);els.file.value='';});
+['dragenter','dragover'].forEach(ev=>els.drop.addEventListener(ev,e=>{e.preventDefault();els.drop.classList.add('drag');}));
+['dragleave','drop'].forEach(ev=>els.drop.addEventListener(ev,e=>{e.preventDefault();els.drop.classList.remove('drag');}));
+els.drop.addEventListener('drop',e=>{if(e.dataTransfer.files.length)addFiles(e.dataTransfer.files);});
+els.fileList.addEventListener('click',e=>{const rm=e.target.getAttribute('data-rm');if(rm){files=files.filter(f=>f.id!==+rm);renderFiles();}});
+els.clearFiles.addEventListener('click',()=>{files=[];renderFiles();});
+
+els.thr.addEventListener('input',()=>{els.thrVal.textContent=els.thr.value+'%';});
+
+/* ---------- run ---------- */
+els.runBtn.addEventListener('click',async()=>{
+  if(!refFeature){log('Attach a signature image first.','err');setStatus('<span class="pill warn">No reference</span> Attach a signature image.');return;}
+  if(!files.length){log('Open at least one PDF.','err');return;}
+  els.runBtn.disabled=true;setStatus('Checking…');
+  const thr=(+els.thr.value)/100;
+  const out=[];
+  try{
+    for(const f of files){
+      let r;try{r=await bestMatchInPdf(f.bytes,refFeature);}catch(e){log(`"${f.name}": error — ${e.message}`,'err');out.push({name:f.name,error:true});continue;}
+      const present=r.best.sim>=thr;
+      out.push({name:f.name,present,sim:r.best.sim,thumb:r.best.thumb,w:r.best.w,h:r.best.h,scanned:r.scanned,skipped:r.skipped,noimg:r.scanned===0});
+      log(`"${f.name}": ${r.scanned} image(s) scanned, best match ${(r.best.sim*100).toFixed(1)}% → ${present?'PRESENT':'not found'}${r.skipped?` (${r.skipped} undecodable image(s) skipped)`:''}.`, present?'ok':null);
+    }
+    renderResults(out,thr);
+    const found=out.filter(o=>o.present).length;
+    setStatus(`<span class="pill ${found?'good':'warn'}">${found} of ${files.length} contain the signature</span> at ≥ ${els.thr.value}% similarity.`);
+  }catch(e){log('Run error: '+e.message,'err');setStatus('<span class="pill bad">Error</span> '+escapeHtml(e.message));}
+  els.runBtn.disabled=false;
+});
+
+function renderResults(out,thr){
+  els.resultsPanel.style.display='block';
+  els.results.innerHTML=out.map(o=>{
+    if(o.error)return `<div class="rcard"><span class="nm">${escapeHtml(o.name)}</span><span class="pill bad">error</span></div>`;
+    const status=o.noimg?'<span class="pill idle">no images</span>':(o.present?'<span class="pill good">present</span>':'<span class="pill warn">not found</span>');
+    const thumb=o.thumb?`<img class="thumb" src="${o.thumb}" alt="best match">`:'';
+    const dims=o.w?`<span class="hint">${o.w}×${o.h}</span>`:'';
+    return `<div class="rcard"><span class="nm" title="${escapeHtml(o.name)}">${escapeHtml(o.name)}</span>${thumb}${dims}<span class="score">${(o.sim*100).toFixed(1)}%</span>${status}</div>`;
+  }).join('');
+}
+
+renderFiles();
+if(typeof createImageBitmap==='undefined'||typeof DecompressionStream==='undefined'){log('This browser lacks the needed image/compression APIs — use a recent Chrome, Edge or Firefox.','err');els.runBtn.disabled=true;}
+</script>
+</body>
+</html>

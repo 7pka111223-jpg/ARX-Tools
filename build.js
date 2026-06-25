@@ -43,3 +43,54 @@ const html = template
 
 writeFileSync('dist/drawing-checker.html', html);
 console.log('Built dist/drawing-checker.html');
+
+// ---- Combined "ARX Tools" file: Drawing Checker + PDF Text Editor in tabs.
+// Each tool is embedded unchanged and fully isolated inside a srcdoc iframe,
+// so their CSS and JS never collide. The shell adds the tab bar and a shared
+// "choose download folder" option both tools save through.
+//
+// embed() turns an HTML document into a JS string literal. JSON.stringify does
+// not escape "</script", so any literal "</script" inside the embedded HTML
+// would prematurely close the shell's <script>. Rewriting it to "<\/script"
+// is inert in HTML parsing yet evaluates back to "</script" in the string.
+function embed(htmlText) {
+  return JSON.stringify(htmlText).replace(/<\/script/gi, '<\\/script');
+}
+
+// Injected into an embedded tool so its blob/data download anchors are routed
+// through the host's chosen save folder. Patches anchor .click(); no-op when
+// the tool runs standalone (no __saveOutputFile on the parent).
+const SAVE_SHIM = '<script>(function(){try{if(!(window.parent&&window.parent!==window&&typeof window.parent.__saveOutputFile==="function"))return;var oc=HTMLAnchorElement.prototype.click;HTMLAnchorElement.prototype.click=function(){try{var href=this.getAttribute("href")||"";var name=this.getAttribute("download");if(name&&(href.indexOf("blob:")===0||href.indexOf("data:")===0)){fetch(href).then(function(r){return r.blob();}).then(function(b){window.parent.__saveOutputFile(name,b,b.type||"application/octet-stream");});return;}}catch(e){}return oc.apply(this,arguments);};}catch(e){}})();<\/script>';
+function withSaveShim(htmlText) {
+  return /<body[^>]*>/i.test(htmlText)
+    ? htmlText.replace(/<body[^>]*>/i, m => m + '\n' + SAVE_SHIM)
+    : SAVE_SHIM + htmlText;
+}
+
+// Hide the Drawing Checker's formatting-rule "regex" editor (Find/Valid regex
+// fields, the preset chips, and the sample-line tester) in the combined app.
+// Done with CSS rather than removing markup so the bundle's JS, which queries
+// those element IDs on init, keeps working.
+const CHECKER_HIDE_CSS = '<style>.field-row:has(#ruleFind),#formatPresets,.pattern-tester:has(#formatTestValue),#formatTestMatches{display:none !important;}</style>';
+function withCheckerTweaks(htmlText) {
+  return htmlText.includes('</head>')
+    ? htmlText.replace('</head>', CHECKER_HIDE_CSS + '\n</head>')
+    : CHECKER_HIDE_CSS + htmlText;
+}
+
+// The Drawing Checker tab uses the maintained standalone build in vendor/
+// (full spell-checker). The freshly built dist/drawing-checker.html above is
+// still produced for standalone use and the build test.
+const checkerHtml = withCheckerTweaks(withSaveShim(readFileSync('vendor/drawing-checker.html', 'utf8')));
+const editorHtml = readFileSync('pdf-text-editor.html', 'utf8');
+const rulesHtml = readFileSync('rule-check.html', 'utf8');
+const signatureHtml = readFileSync('signature-check.html', 'utf8');
+const arxTemplate = readFileSync('arx.template.html', 'utf8');
+const arxHtml = arxTemplate
+  .replace('/*__CHECKER_HTML__*/', () => embed(checkerHtml))
+  .replace('/*__EDITOR_HTML__*/', () => embed(editorHtml))
+  .replace('/*__RULES_HTML__*/', () => embed(rulesHtml))
+  .replace('/*__SIGNATURE_HTML__*/', () => embed(signatureHtml));
+
+writeFileSync('dist/arx-tools.html', arxHtml);
+console.log('Built dist/arx-tools.html');
