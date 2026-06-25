@@ -88,7 +88,7 @@
 
   <div class="panel">
     <h2>2 · Rules</h2>
-    <p class="hint" style="margin-top:-4px">Define each rule like the Drawing Checker: type an <strong>example value</strong> and the <strong>variable part</strong> that changes between drawings. The format is learned from the example (e.g. <code>J2501</code> → an uppercase letter + 4 digits). Each found instance is <strong>correct</strong> if it matches that format, otherwise <strong>wrong</strong>.</p>
+    <p class="hint" style="margin-top:-4px">Define each rule like the Drawing Checker: type an <strong>example value</strong> and the <strong>variable part</strong> that changes between drawings. The format is learned from the example (e.g. <code>J2501</code> → an uppercase letter + 4 digits). Each found instance is <strong>correct</strong> if it matches that format, otherwise <strong>wrong</strong>. Tick <strong>Match example exactly</strong> to look for the example value verbatim (no variable part needed).</p>
     <div id="rules"></div>
     <div class="btns">
       <button id="addRule">+ Add rule</button>
@@ -673,9 +673,14 @@ function escRe(str){return String(str).replace(/[.*+?^${}()|[\]\\\-]/g,'\\$&');}
 function runToPattern(run){if(run.cls==='literal')return escRe(run.text);const cls=run.cls==='digit'?'\\d':run.cls==='upper'?'[A-Z]':'[a-z]';return run.text.length===1?cls:`${cls}{${run.text.length}}`;}
 function runToLoose(run){if(run.cls==='literal')return escRe(run.text);return run.cls==='digit'?'\\d+':run.cls==='upper'?'[A-Z]+':'[a-z]+';}
 function runToDesc(run){if(run.cls==='literal')return `the text "${run.text}"`;const n=run.text.length;return `${n} ${RUN_CLASS_LABEL[run.cls]}${n===1?'':'s'}`;}
-function buildPattern(example,variablePart){
+function buildPattern(example,variablePart,exact){
   if(!example)return {error:'Enter an example value first.'};
-  if(!variablePart)return {error:'Enter the part of the example that changes between drawings.'};
+  if(exact){
+    const valid=`^${escRe(example)}$`;
+    const locate=`(?<![A-Za-z0-9])${escRe(example)}(?![A-Za-z0-9])`;
+    return {valid,locate,explanation:`Will match exactly: "${example}"`,warning:null,error:null};
+  }
+  if(!variablePart)return {error:'Enter the part of the example that changes — or tick “Match example exactly”.'};
   const index=example.indexOf(variablePart);
   if(index===-1)return {error:`"${variablePart}" was not found inside the example value.`};
   const warning=example.indexOf(variablePart,index+1)!==-1?`"${variablePart}" appears more than once in the example — the first occurrence was used.`:null;
@@ -690,12 +695,12 @@ function buildPattern(example,variablePart){
 
 /* ---- default example rules ---- */
 function defaultRules(){
-  return [{ id:nextId++, name:'Drawing Number', example:'J2501-JPD-EBH-DG-20100', variablePart:'J2501-JPD-EBH-DG-20100', ci:false }];
+  return [{ id:nextId++, name:'Drawing Number', example:'J2501-JPD-EBH-DG-20100', variablePart:'J2501-JPD-EBH-DG-20100', ci:false, exact:false }];
 }
 let rules=defaultRules();
 
 function ruleExplainHtml(r){
-  const b=buildPattern(r.example,r.variablePart);
+  const b=buildPattern(r.example,r.variablePart,r.exact);
   if(b.error)return `<span class="pill warn">incomplete</span> ${escapeHtml(b.error)}`;
   return `${escapeHtml(b.explanation)}<br><span class="hint mono">format: ${escapeHtml(b.valid)}</span>${b.warning?`<br><span class="pill warn">note</span> ${escapeHtml(b.warning)}`:''}`;
 }
@@ -708,9 +713,12 @@ function renderRules(){
       </div>
       <div class="grid">
         <div><label>Example value (a correct one)</label><input type="text" class="mono" data-k="example" value="${escapeHtml(r.example)}" placeholder="e.g. J2501-JPD-EBH-DG-20100"></div>
-        <div><label>Variable part (what changes between drawings)</label><input type="text" class="mono" data-k="variablePart" value="${escapeHtml(r.variablePart)}" placeholder="e.g. J2501-JPD-EBH-DG-20100"></div>
+        <div><label>Variable part (what changes between drawings)</label><input type="text" class="mono" data-k="variablePart" value="${escapeHtml(r.variablePart)}" placeholder="e.g. J2501-JPD-EBH-DG-20100" ${r.exact?'disabled style="opacity:.45"':''}></div>
       </div>
-      <div class="checks"><label><input type="checkbox" data-k="ci" ${r.ci?'checked':''}> Ignore case</label></div>
+      <div class="checks">
+        <label><input type="checkbox" data-k="exact" ${r.exact?'checked':''}> Match example exactly</label>
+        <label><input type="checkbox" data-k="ci" ${r.ci?'checked':''}> Ignore case</label>
+      </div>
       <div class="meta rexplain" style="margin-top:8px">${ruleExplainHtml(r)}</div>
     </div>`).join('');
 }
@@ -718,10 +726,11 @@ els.rules.addEventListener('input',e=>{
   const card=e.target.closest('.rule');if(!card)return;const id=+card.dataset.id;const r=rules.find(x=>x.id===id);if(!r)return;
   const k=e.target.dataset.k;if(!k)return;
   r[k]=e.target.type==='checkbox'?e.target.checked:e.target.value;
+  if(k==='exact'){const vp=card.querySelector('[data-k="variablePart"]');if(vp){vp.disabled=e.target.checked;vp.style.opacity=e.target.checked?'.45':'';}}
   const ex=card.querySelector('.rexplain');if(ex)ex.innerHTML=ruleExplainHtml(r);
 });
 els.rules.addEventListener('click',e=>{const del=e.target.getAttribute('data-del');if(del){rules=rules.filter(x=>x.id!==+del);renderRules();}});
-els.addRule.addEventListener('click',()=>{rules.push({id:nextId++,name:'New rule',example:'',variablePart:'',ci:false});renderRules();});
+els.addRule.addEventListener('click',()=>{rules.push({id:nextId++,name:'New rule',example:'',variablePart:'',ci:false,exact:false});renderRules();});
 els.resetRules.addEventListener('click',()=>{rules=defaultRules();renderRules();});
 
 /* ---- files ---- */
@@ -768,7 +777,7 @@ async function extractLines(pdfBytes){
 
 /* ---- rule evaluation ---- */
 function evalRule(lines,r){
-  const built=buildPattern(r.example,r.variablePart);
+  const built=buildPattern(r.example,r.variablePart,r.exact);
   if(built.error)return {error:built.error};
   let locateRe,validRe;
   try{ locateRe=new RegExp(built.locate,'g'+(r.ci?'i':'')); validRe=new RegExp(built.valid,r.ci?'i':''); }
