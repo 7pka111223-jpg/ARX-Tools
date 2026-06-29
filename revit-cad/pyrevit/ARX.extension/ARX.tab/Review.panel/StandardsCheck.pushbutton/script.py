@@ -20,8 +20,8 @@ doc = revit.doc
 
 
 def main():
-    path = os.path.join(os.path.dirname(__file__), "arx-rules.json")
-    if not os.path.exists(path):
+    path = arx.resolve_rules_path(os.path.dirname(__file__))
+    if not path:
         path = forms.pick_file(file_ext="json", title="Select arx-rules.json")
         if not path:
             return

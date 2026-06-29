@@ -8,6 +8,7 @@ you can drop in ``pyspellchecker`` or a Hunspell binding instead — anything wi
 a ``correct`` method works.
 """
 
+import os
 import re
 
 _ALPHABET = "abcdefghijklmnopqrstuvwxyz"
@@ -59,6 +60,22 @@ def load_dic_speller(dic_path):
         if base:
             words.append(base)
     return SetSpeller(words)
+
+
+def load_word_list(path):
+    """Build a SetSpeller from a plain newline-delimited word list."""
+    with open(path, "r") as fh:
+        return SetSpeller(w.strip() for w in fh if w.strip())
+
+
+def default_speller():
+    """Load the bundled, affix-expanded en_US word list (data/en_US.txt).
+
+    Falls back to an empty speller (everything flagged) if the bundled list is
+    missing, so a broken install is obvious rather than silently passing.
+    """
+    path = os.path.join(os.path.dirname(__file__), "data", "en_US.txt")
+    return load_word_list(path) if os.path.exists(path) else SetSpeller([])
 
 
 def check_spelling(words, spell_instance, custom_dictionary=None, ignore=None):

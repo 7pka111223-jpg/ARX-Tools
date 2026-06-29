@@ -14,8 +14,11 @@ from .rules_engine import (
     evaluate_formatting_rules,
     evaluate_project_rules,
 )
-from .speller import check_spelling, words_of, SetSpeller, load_dic_speller
-from .rules_io import load_rules, save_rules, normalize_rules
+from .speller import (
+    check_spelling, words_of, SetSpeller, load_dic_speller,
+    load_word_list, default_speller,
+)
+from .rules_io import load_rules, save_rules, normalize_rules, resolve_rules_path
 from .report import issues_to_csv, issues_to_html
 
 __all__ = [
@@ -25,7 +28,8 @@ __all__ = [
     "evaluate_rules", "evaluate_field_rules", "evaluate_formatting_rules",
     "evaluate_project_rules",
     "check_spelling", "words_of", "SetSpeller", "load_dic_speller",
-    "load_rules", "save_rules", "normalize_rules",
+    "load_word_list", "default_speller",
+    "load_rules", "save_rules", "normalize_rules", "resolve_rules_path",
     "issues_to_csv", "issues_to_html",
 ]
 

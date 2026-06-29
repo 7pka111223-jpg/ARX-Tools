@@ -27,10 +27,14 @@ namespace Arx.Revit.Commands
             var pages = RevitExtractor.Collect(doc);
             var issues = Evaluator.EvaluateRules(pages, config);
 
-            // Production: wrap WeCantSpell.Hunspell with the vendored en_US dictionary.
-            // var hunspell = WordList.CreateFromFiles(dicPath, affPath);
-            // ISpeller speller = new HunspellSpeller(hunspell);
-            ISpeller speller = new SetSpeller(Array.Empty<string>());
+            // Loads the bundled, affix-expanded en_US.txt placed next to the add-in
+            // by the installer. (For affix-aware checking you may instead wrap
+            // WeCantSpell.Hunspell with the en_US .aff/.dic — see Speller.cs.)
+            var wordList = Path.Combine(
+                Path.GetDirectoryName(typeof(QaCommand).Assembly.Location), "en_US.txt");
+            ISpeller speller = File.Exists(wordList)
+                ? SetSpeller.FromFile(wordList)
+                : new SetSpeller(Array.Empty<string>());
             issues.AddRange(Speller.CheckSpelling(
                 Evaluator.WordsOf(pages), speller, config.Spelling.Custom));
 

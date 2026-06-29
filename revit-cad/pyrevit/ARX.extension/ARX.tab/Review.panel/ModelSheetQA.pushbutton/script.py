@@ -20,21 +20,17 @@ doc = revit.doc
 
 
 def _load_config():
-    bundled = os.path.join(os.path.dirname(__file__), "arx-rules.json")
-    if os.path.exists(bundled):
-        return arx.load_rules(bundled)
-    path = forms.pick_file(file_ext="json", title="Select arx-rules.json")
+    path = arx.resolve_rules_path(os.path.dirname(__file__))
     if not path:
-        script.exit()
+        path = forms.pick_file(file_ext="json", title="Select arx-rules.json")
+        if not path:
+            script.exit()
     return arx.load_rules(path)
 
 
 def _build_speller(config):
-    # Prefer a bundled Hunspell .dic; fall back to an empty speller (everything
-    # flagged) so the user notices the dictionary is missing.
-    dic = os.path.join(os.path.dirname(__file__), "en_US.dic")
-    speller = arx.load_dic_speller(dic) if os.path.exists(dic) else arx.SetSpeller([])
-    return speller
+    # Uses the bundled, affix-expanded en_US word list (data/en_US.txt).
+    return arx.default_speller()
 
 
 def main():

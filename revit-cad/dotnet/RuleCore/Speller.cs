@@ -21,6 +21,11 @@ namespace Arx.RuleCore
         public SetSpeller(IEnumerable<string> words) =>
             _words = new HashSet<string>(words.Select(w => w.ToLowerInvariant()));
         public bool Correct(string word) => _words.Contains(word.ToLowerInvariant());
+
+        // Load the bundled, affix-expanded en_US.txt (the same list the pyRevit
+        // tool ships) so spelling works without a Hunspell dependency.
+        public static SetSpeller FromFile(string path) =>
+            new SetSpeller(System.IO.File.ReadLines(path));
     }
 
     // Port of src/spellChecker.js checkSpelling.

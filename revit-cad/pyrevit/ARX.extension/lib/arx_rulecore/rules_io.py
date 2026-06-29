@@ -7,6 +7,7 @@ anchored ``pattern`` the evaluator consumes, via the shared pattern builder.
 """
 
 import json
+import os
 
 from .pattern_builder import build_pattern
 
@@ -30,6 +31,24 @@ def normalize_rules(config):
             rule["_locate"] = built["locate"]
             rule["_explanation"] = built["explanation"]
     return cfg
+
+
+def resolve_rules_path(start_dir):
+    """Search ``start_dir`` and up to 5 parents for an ``arx-rules.json``.
+
+    Lets a button script find a config bundled next to it OR at the extension
+    root, so a packaged install works with no prompt. Returns None if not found.
+    """
+    d = os.path.abspath(start_dir)
+    for _ in range(6):
+        candidate = os.path.join(d, "arx-rules.json")
+        if os.path.exists(candidate):
+            return candidate
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        d = parent
+    return None
 
 
 def load_rules(path):

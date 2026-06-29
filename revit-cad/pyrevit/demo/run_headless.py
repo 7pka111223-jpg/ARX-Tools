@@ -41,13 +41,13 @@ def main():
 
     issues = arx.evaluate_rules(pages, config)
 
-    # A tiny demo dictionary; real deployments load a Hunspell .dic via
-    # arx.load_dic_speller(...). "Reinforcment" (sic) is intentionally absent.
-    speller = arx.SetSpeller([
-        "project", "dwg", "no", "rev", "general", "arrangement", "of", "the",
-        "concrete", "invert", "reinforcement", "detail", "at", "chainage",
-    ])
-    custom = config.get("spelling", {}).get("custom", [])
+    # Real bundled, affix-expanded en_US dictionary. "Reinforcment" (sic) is the
+    # only genuine misspelling; project codes go in the custom dictionary so they
+    # are not flagged.
+    speller = arx.default_speller()
+    custom = list(config.get("spelling", {}).get("custom", [])) + [
+        "RIYADH-METRO", "DUBAI-TRAM", "J2501-JPD-EBH-DG-20100", "J2501-JPD-EBH-DG-2010X",
+    ]
     issues += arx.check_spelling(arx.words_of(pages), speller, custom_dictionary=custom)
 
     print("== ARX Revit/CAD rule core — headless demo ==")
