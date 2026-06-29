@@ -1,2 +1,7 @@
 node_modules/
 dist/
+
+# Revit/CAD expansion: generated demo output
+revit-cad/pyrevit/demo/report.*
+__pycache__/
+*.pyc
