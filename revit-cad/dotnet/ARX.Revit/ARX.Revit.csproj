@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Multi-target: net48 for Revit <=2024, net8.0-windows for Revit 2025+.
+       Set RevitVersion at build time, e.g.:
+         dotnet build -c Release -f net8.0-windows -p:RevitVersion=2025
+         dotnet build -c Release -f net48           -p:RevitVersion=2024 -->
+  <PropertyGroup>
+    <TargetFrameworks>net48;net8.0-windows</TargetFrameworks>
+    <RootNamespace>Arx.Revit</RootNamespace>
+    <AssemblyName>ARX.Revit</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <UseWPF>true</UseWPF>
+    <RevitVersion Condition="'$(RevitVersion)' == ''">2024</RevitVersion>
+    <RevitDir>C:\Program Files\Autodesk\Revit $(RevitVersion)</RevitDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RuleCore\RuleCore.csproj" />
+  </ItemGroup>
+
+  <!-- Revit API assemblies: reference-only (never copied into the output). -->
+  <ItemGroup>
+    <Reference Include="RevitAPI">
+      <HintPath>$(RevitDir)\RevitAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="RevitAPIUI">
+      <HintPath>$(RevitDir)\RevitAPIUI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

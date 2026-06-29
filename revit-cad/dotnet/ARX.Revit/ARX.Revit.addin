@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Deploy per Revit version to:
+     %ProgramData%\Autodesk\Revit\Addins\<year>\ARX.Revit.addin
+     and set <Assembly> to the installed ARX.Revit.dll path. -->
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>ARX Tools</Name>
+    <Assembly>ARX.Revit.dll</Assembly>
+    <FullClassName>Arx.Revit.App</FullClassName>
+    <AddInId>8368cd90-b346-4b7a-8664-7a097e409a2d</AddInId>
+    <VendorId>ARX</VendorId>
+    <VendorDescription>ARX — Engineering Tools</VendorDescription>
+  </AddIn>
+</RevitAddIns>

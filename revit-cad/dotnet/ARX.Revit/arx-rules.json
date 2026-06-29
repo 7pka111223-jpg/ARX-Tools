@@ -1,0 +1,39 @@
+{
+  "titleBlockRegion": { "corner": "bottom-right", "widthPct": 40, "heightPct": 35 },
+  "project": [
+    { "id": "proj", "label": "PROJECT", "value": "RIYADH-METRO" }
+  ],
+  "rules": [
+    {
+      "id": "dwgno",
+      "label": "DWG NO",
+      "category": "titleBlock",
+      "severity": "error",
+      "enabled": true,
+      "example": "J2501-JPD-EBH-DG-20100",
+      "variable": "20100"
+    },
+    {
+      "id": "rev",
+      "label": "REV",
+      "category": "revision",
+      "severity": "warn",
+      "enabled": true,
+      "example": "A",
+      "variable": "A"
+    },
+    {
+      "id": "revfmt",
+      "category": "formatting",
+      "severity": "warn",
+      "enabled": true,
+      "find": "REV\\s*[A-Za-z]",
+      "valid": "REV [A-Z]",
+      "message": "Revision should be formatted as 'REV X' (single space, uppercase)"
+    }
+  ],
+  "spelling": {
+    "language": "en_US",
+    "custom": ["ARX", "rebar", "invert", "chainage", "geotextile"]
+  }
+}
