@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Self-contained, dependency-free Revit add-in: ONE DLL, no NuGet packages.
+       It compiles the pure-BCL engine files from ../dotnet/RuleCore straight into
+       this assembly and excludes RulesIo.cs (the only file that used a third-party
+       JSON library) — rules are embedded in ARXStandalone.cs instead.
+
+       Build (only the person building needs the free .NET SDK; end users do not):
+         dotnet build -c Release -f net48           -p:RevitVersion=2024
+         dotnet build -c Release -f net8.0-windows  -p:RevitVersion=2025  -->
+  <PropertyGroup>
+    <TargetFrameworks>net48;net8.0-windows</TargetFrameworks>
+    <RootNamespace>Arx.Revit.Standalone</RootNamespace>
+    <AssemblyName>ARX.Revit.Standalone</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <UseWindowsForms>false</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RevitVersion Condition="'$(RevitVersion)' == ''">2024</RevitVersion>
+    <RevitDir>C:\Program Files\Autodesk\Revit $(RevitVersion)</RevitDir>
+  </PropertyGroup>
+
+  <!-- Reuse the shared engine sources (NO project reference, NO packages) -->
+  <ItemGroup>
+    <Compile Include="..\dotnet\RuleCore\Models.cs" />
+    <Compile Include="..\dotnet\RuleCore\PatternBuilder.cs" />
+    <Compile Include="..\dotnet\RuleCore\TitleBlockLocator.cs" />
+    <Compile Include="..\dotnet\RuleCore\Evaluator.cs" />
+    <Compile Include="..\dotnet\RuleCore\Speller.cs" />
+    <Compile Include="..\dotnet\RuleCore\Report.cs" />
+  </ItemGroup>
+
+  <!-- Revit API: reference-only, never copied into the output -->
+  <ItemGroup>
+    <Reference Include="RevitAPI">
+      <HintPath>$(RevitDir)\RevitAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="RevitAPIUI">
+      <HintPath>$(RevitDir)\RevitAPIUI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

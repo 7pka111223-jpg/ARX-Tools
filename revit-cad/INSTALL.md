@@ -1,11 +1,19 @@
 # Installing the ARX Revit/CAD Tools
 
-Two tracks ship from this folder. Most users want **Track B (pyRevit)** — it is a
-no-compile, drop-in install. **Track C (C# add-in)** is for a compiled, branded
-deployment and must be built on a Windows machine that has Revit + the .NET SDK.
+All run **entirely on your machine** (nothing is uploaded) and are **Windows-only**
+(Revit requirement). Pick by how much you want to depend on outside the tool:
 
-Both run **entirely on your machine** (nothing is uploaded) and are **Windows-only**
-(Revit requirement).
+| You want… | Use | External dependency |
+|---|---|---|
+| The installed tool to need **nothing but Revit** | **Track A — self-contained add-in** (`standalone-addin/`) | none (one DLL; build needs the free .NET SDK once) |
+| **Zero build, nothing installed at all** | **Track A → Revit Macro** (`standalone-addin/macro/`) | none — Revit's built-in editor compiles it |
+| The simplest **no-compile** rollout with full features | **Track B — pyRevit** | the free pyRevit app |
+| A branded, multi-feature compiled product | **Track C — full C# solution** | .NET SDK |
+
+**If your priority is "no external libraries or apps," use Track A** — see
+[`standalone-addin/README.md`](standalone-addin/README.md). The installed add-in
+links against only Revit's API + the .NET base class library; end users drop a
+single DLL (+ manifest) into the Revit add-ins folder and nothing else.
 
 ---
 

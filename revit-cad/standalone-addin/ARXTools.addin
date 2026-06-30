@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copy this file (and ARX.Revit.Standalone.dll + en_US.txt) into:
+       %AppData%\Autodesk\Revit\Addins\<version>\
+     The DLL is resolved relative to this manifest, so the filename alone works. -->
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>ARX Tools</Name>
+    <Assembly>ARX.Revit.Standalone.dll</Assembly>
+    <FullClassName>Arx.Revit.Standalone.App</FullClassName>
+    <AddInId>873d9641-136b-4fff-beb1-820705e98304</AddInId>
+    <VendorId>ARX</VendorId>
+    <VendorDescription>ARX — Engineering Tools</VendorDescription>
+  </AddIn>
+</RevitAddIns>

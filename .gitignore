@@ -5,3 +5,9 @@ dist/
 revit-cad/pyrevit/demo/report.*
 __pycache__/
 *.pyc
+
+# .NET build artifacts
+bin/
+obj/
+revit-cad/standalone-addin/out/
+revit-cad/standalone-addin/en_US.txt

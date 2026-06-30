@@ -7,8 +7,12 @@ Revit and a future AutoCAD add-in.
 
 | Folder | Plan | Stack | Status |
 |---|---|---|---|
+| [`standalone-addin/`](standalone-addin/) | **A** — self-contained add-in (no external libs/apps) | C# single DLL + optional Revit macro | ✅ Dependency-free build of the engine + QA tool; macro alt; **recommended for "no external dependencies"** |
 | [`pyrevit/`](pyrevit/) | **B** — pyRevit extension | Python (IronPython/CPython) | ✅ Core + 4 tools, **16 unit tests green**, headless demo runs |
-| [`dotnet/`](dotnet/) | **C** — native Revit add-in | C# (.NET Standard 2.0 core + Revit host) | ✅ `RuleCore` + xUnit + Revit skeleton (compile-ready; needs .NET SDK / Revit to build) |
+| [`dotnet/`](dotnet/) | **C** — full native Revit add-in | C# (.NET Standard 2.0 core + Revit host) | ✅ `RuleCore` + xUnit + Revit skeleton (compile-ready; needs .NET SDK / Revit to build) |
+
+**Easiest install with no external libraries or apps:** the
+[`standalone-addin/`](standalone-addin/) track — see [`INSTALL.md`](INSTALL.md).
 
 Design rationale, format constraints (why Revit has no offline-browser path) and
 the shared-core strategy are in [`../docs/cad-revit-expansion/`](../docs/cad-revit-expansion/).
