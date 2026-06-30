@@ -35,3 +35,8 @@ deduction hours; the breakdown and net total update live. The pay rules are:
 - Excuses and deductions are charged at ×1 of the hourly rate
 
 Net salary = base + weekday overtime + weekend overtime − excuses − deductions.
+
+It is also installable on iPhone/iPad: open the file in Safari, tap **Share →
+Add to Home Screen**, and it launches full-screen as a web app with its own
+icon. (Safari's *Add to Home Screen* requires the page to be served over a URL,
+e.g. GitHub Pages, rather than opened from a local file.)
