@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ARX Salary Calculator</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232563eb' stroke-width='2'%3E%3Crect x='4' y='2' width='16' height='20' rx='2'/%3E%3Cpath d='M8 6h8M8 10h2M8 14h2M8 18h2M14 10h2v8h-2z'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --color-bg: #f1f5f9;
+    --color-surface: #ffffff;
+    --color-surface-muted: #f8fafc;
+    --color-border: #e2e8f0;
+    --color-border-strong: #cbd5e1;
+    --color-text: #0f172a;
+    --color-text-secondary: #64748b;
+    --color-text-tertiary: #94a3b8;
+    --color-primary: #2563eb;
+    --color-primary-hover: #1d4ed8;
+    --color-primary-soft: #eff6ff;
+    --color-success: #15803d;
+    --color-success-bg: #dcfce7;
+    --color-success-border: #bbf7d0;
+    --color-danger: #b91c1c;
+    --color-danger-bg: #fee2e2;
+    --color-danger-border: #fecaca;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.04);
+    --shadow-md: 0 4px 16px -4px rgb(15 23 42 / 0.10), 0 2px 6px -2px rgb(15 23 42 / 0.06);
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: var(--font-sans);
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a, button, input, select { font-family: inherit; }
+
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  .app-shell {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 28px 24px 64px;
+  }
+
+  .app-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+
+  .app-header__icon {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-primary-soft);
+    color: var(--color-primary);
+    border-radius: var(--radius-md);
+  }
+
+  .app-header h1 {
+    font-size: 19px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+
+  .app-header p {
+    margin: 2px 0 0;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+  }
+
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .card__title {
+    font-size: 14px;
+    font-weight: 650;
+    margin: 0 0 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-secondary);
+  }
+
+  .field-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .field-grid .field--full { grid-column: 1 / -1; }
+
+  @media (max-width: 520px) {
+    .field-grid { grid-template-columns: 1fr; }
+  }
+
+  .field { margin: 0; }
+  .field label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    margin-bottom: 4px;
+  }
+  .field-hint {
+    display: block;
+    font-size: 11.5px;
+    color: var(--color-text-tertiary);
+    margin-top: 3px;
+  }
+
+  .input-affix {
+    display: flex;
+    align-items: stretch;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    overflow: hidden;
+    transition: border-color 120ms ease;
+  }
+  .input-affix:focus-within { border-color: var(--color-primary); }
+  .input-affix input {
+    flex: 1 1 auto;
+    width: 100%;
+    border: none;
+    outline: none;
+    padding: 8px 10px;
+    background: transparent;
+    font-size: 14px;
+    color: var(--color-text);
+    min-width: 0;
+  }
+  /* Trim the native number spinners for a cleaner look. */
+  .input-affix input::-webkit-outer-spin-button,
+  .input-affix input::-webkit-inner-spin-button { margin: 0; }
+  .input-affix__unit {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    padding: 0 11px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    background: var(--color-surface-muted);
+    border-left: 1px solid var(--color-border);
+  }
+
+  /* Breakdown table */
+  table { border-collapse: collapse; width: 100%; }
+  thead th {
+    text-align: left;
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-tertiary);
+    font-weight: 600;
+    padding: 0 10px 8px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  thead th.num, tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody td {
+    padding: 10px;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 13.5px;
+  }
+  tbody td.amount { font-family: var(--font-mono); font-size: 13px; }
+  tbody td.muted { color: var(--color-text-tertiary); font-size: 12.5px; }
+  tbody tr.is-deduction td.amount { color: var(--color-danger); }
+  tbody tr.is-addition td.amount { color: var(--color-success); }
+
+  tfoot td {
+    padding: 14px 10px 0;
+    font-size: 15px;
+    font-weight: 700;
+  }
+  tfoot td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tfoot .net-value { color: var(--color-primary); }
+
+  .rate-callout {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    background: var(--color-primary-soft);
+    border: 1px solid #dbeafe;
+    border-radius: var(--radius-md);
+  }
+  .rate-callout__label { font-size: 12.5px; color: var(--color-text-secondary); }
+  .rate-callout__value {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--color-primary);
+    font-variant-numeric: tabular-nums;
+  }
+  .rate-callout__formula { font-size: 11.5px; color: var(--color-text-tertiary); margin-left: auto; }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <header class="app-header">
+    <span class="app-header__icon" aria-hidden="true">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 10h2M8 14h2M8 18h2M14 10h2v8h-2z"/></svg>
+    </span>
+    <div>
+      <h1>ARX Salary Calculator</h1>
+      <p>Net monthly salary from base pay, overtime, excuses, and deductions</p>
+    </div>
+  </header>
+
+  <section class="card" aria-labelledby="inputsTitle">
+    <h2 class="card__title" id="inputsTitle">Inputs</h2>
+    <div class="field-grid">
+      <div class="field field--full">
+        <label for="baseSalary">Base salary</label>
+        <div class="input-affix">
+          <input type="number" id="baseSalary" min="0" step="any" inputmode="decimal" placeholder="0">
+          <span class="input-affix__unit">EGP</span>
+        </div>
+        <span class="field-hint">Monthly base salary in EGP.</span>
+      </div>
+
+      <div class="field">
+        <label for="weekdayOt">Overtime — weekdays</label>
+        <div class="input-affix">
+          <input type="number" id="weekdayOt" min="0" step="any" inputmode="decimal" placeholder="0">
+          <span class="input-affix__unit">hours</span>
+        </div>
+        <span class="field-hint">Paid at ×1.35 of the hourly rate.</span>
+      </div>
+
+      <div class="field">
+        <label for="weekendOt">Overtime — weekend</label>
+        <div class="input-affix">
+          <input type="number" id="weekendOt" min="0" step="any" inputmode="decimal" placeholder="0">
+          <span class="input-affix__unit">hours</span>
+        </div>
+        <span class="field-hint">Paid at ×2 of the hourly rate.</span>
+      </div>
+
+      <div class="field">
+        <label for="excuses">Excuses</label>
+        <div class="input-affix">
+          <input type="number" id="excuses" min="0" step="any" inputmode="decimal" placeholder="0">
+          <span class="input-affix__unit">hours</span>
+        </div>
+        <span class="field-hint">Deducted at ×1 of the hourly rate.</span>
+      </div>
+
+      <div class="field">
+        <label for="deductions">Deductions</label>
+        <div class="input-affix">
+          <input type="number" id="deductions" min="0" step="any" inputmode="decimal" placeholder="0">
+          <span class="input-affix__unit">hours</span>
+        </div>
+        <span class="field-hint">Deducted at ×1 of the hourly rate.</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="resultsTitle">
+    <h2 class="card__title" id="resultsTitle">Breakdown</h2>
+
+    <div class="rate-callout">
+      <span class="rate-callout__label">Hourly rate</span>
+      <span class="rate-callout__value" id="hourlyRate">0.00 EGP</span>
+      <span class="rate-callout__formula">base ÷ (30 days × 8 hours)</span>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Component</th>
+          <th scope="col" class="num">Detail</th>
+          <th scope="col" class="num">Amount (EGP)</th>
+        </tr>
+      </thead>
+      <tbody id="breakdownBody">
+        <!-- rows injected by script -->
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="2">Net salary</td>
+          <td class="num net-value" id="netSalary">0.00 EGP</td>
+        </tr>
+      </tfoot>
+    </table>
+  </section>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // --- Pay rules (tweak here if ARX policy changes) ---------------------
+  var WORKING_DAYS = 30;       // days used to derive the hourly rate
+  var HOURS_PER_DAY = 8;       // working hours per day
+  var WEEKDAY_OT_RATE = 1.35;  // weekday overtime multiplier
+  var WEEKEND_OT_RATE = 2;     // weekend overtime multiplier
+  var MONTHLY_HOURS = WORKING_DAYS * HOURS_PER_DAY; // 240
+
+  // Read a numeric field, treating blank/negative/NaN as 0.
+  function readNonNegative(id) {
+    var value = parseFloat(document.getElementById(id).value);
+    if (!isFinite(value) || value < 0) return 0;
+    return value;
+  }
+
+  // Pure calculation: given the raw inputs, return every line of the
+  // breakdown plus the net total. Kept free of DOM access so the formulas
+  // are easy to read and verify.
+  function calculate(input) {
+    var hourlyRate = input.baseSalary > 0 ? input.baseSalary / MONTHLY_HOURS : 0;
+
+    var weekdayOtPay = input.weekdayOtHours * hourlyRate * WEEKDAY_OT_RATE;
+    var weekendOtPay = input.weekendOtHours * hourlyRate * WEEKEND_OT_RATE;
+    var excusesAmount = input.excuseHours * hourlyRate;
+    var deductionsAmount = input.deductionHours * hourlyRate;
+
+    var net = input.baseSalary + weekdayOtPay + weekendOtPay
+            - excusesAmount - deductionsAmount;
+
+    return {
+      hourlyRate: hourlyRate,
+      weekdayOtPay: weekdayOtPay,
+      weekendOtPay: weekendOtPay,
+      excusesAmount: excusesAmount,
+      deductionsAmount: deductionsAmount,
+      net: net
+    };
+  }
+
+  function fmtMoney(value) {
+    return value.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }) + ' EGP';
+  }
+
+  function fmtHours(value) {
+    // Show up to 2 decimals but drop trailing zeros (e.g. "1.5 h", "2 h").
+    var n = Math.round(value * 100) / 100;
+    return n + (n === 1 ? ' hour' : ' hours');
+  }
+
+  function row(opts) {
+    var tr = document.createElement('tr');
+    if (opts.kind) tr.className = opts.kind === 'deduction' ? 'is-deduction' : 'is-addition';
+
+    var label = document.createElement('td');
+    label.textContent = opts.label;
+
+    var detail = document.createElement('td');
+    detail.className = 'num muted';
+    detail.textContent = opts.detail || '';
+
+    var amount = document.createElement('td');
+    amount.className = 'num amount';
+    amount.textContent = opts.amountText;
+
+    tr.appendChild(label);
+    tr.appendChild(detail);
+    tr.appendChild(amount);
+    return tr;
+  }
+
+  function render() {
+    var input = {
+      baseSalary: readNonNegative('baseSalary'),
+      weekdayOtHours: readNonNegative('weekdayOt'),
+      weekendOtHours: readNonNegative('weekendOt'),
+      excuseHours: readNonNegative('excuses'),
+      deductionHours: readNonNegative('deductions')
+    };
+
+    var r = calculate(input);
+
+    document.getElementById('hourlyRate').textContent = fmtMoney(r.hourlyRate);
+    document.getElementById('netSalary').textContent = fmtMoney(r.net);
+
+    var body = document.getElementById('breakdownBody');
+    body.textContent = '';
+
+    body.appendChild(row({
+      label: 'Base salary',
+      detail: '',
+      amountText: fmtMoney(input.baseSalary)
+    }));
+
+    body.appendChild(row({
+      label: 'Overtime — weekdays',
+      detail: fmtHours(input.weekdayOtHours) + ' × ' + WEEKDAY_OT_RATE + ' rate',
+      amountText: '+ ' + fmtMoney(r.weekdayOtPay),
+      kind: 'addition'
+    }));
+
+    body.appendChild(row({
+      label: 'Overtime — weekend',
+      detail: fmtHours(input.weekendOtHours) + ' × ' + WEEKEND_OT_RATE + ' rate',
+      amountText: '+ ' + fmtMoney(r.weekendOtPay),
+      kind: 'addition'
+    }));
+
+    body.appendChild(row({
+      label: 'Excuses',
+      detail: fmtHours(input.excuseHours) + ' × 1 rate',
+      amountText: '− ' + fmtMoney(r.excusesAmount),
+      kind: 'deduction'
+    }));
+
+    body.appendChild(row({
+      label: 'Deductions',
+      detail: fmtHours(input.deductionHours) + ' × 1 rate',
+      amountText: '− ' + fmtMoney(r.deductionsAmount),
+      kind: 'deduction'
+    }));
+  }
+
+  ['baseSalary', 'weekdayOt', 'weekendOt', 'excuses', 'deductions'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', render);
+  });
+
+  render();
+
+  // Exposed for headless verification / testing.
+  window.__arxSalary = { calculate: calculate, MONTHLY_HOURS: MONTHLY_HOURS };
+})();
+</script>
+</body>
+</html>
