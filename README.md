@@ -7,10 +7,20 @@ A small collection of self-contained, offline browser tools for ARX.
 Checks CAD-exported PDF engineering drawings against an editable rules file
 (spelling, title block / project naming, formatting, revision fields).
 
+## Revit Drawing Checker
+
+A pyRevit extension that runs the same kind of checks directly inside
+Revit on the open model: sheet/drawing number format, project info,
+revision fields, sheet/view/schedule naming conventions, and spelling of
+all drawing text. It shares the rules JSON schema with the web Drawing
+Checker, so one rules file drives both tools. See
+[`revit/README.md`](revit/README.md) for install and usage.
+
 ## Development
 
     npm install
-    npm test          # run the unit test suite
+    npm test          # run the JS unit test suite
+    npm run test:py    # run the Revit checker's Python unit tests (no Revit needed)
     npm run build      # produce dist/drawing-checker.html
 
 ## Usage

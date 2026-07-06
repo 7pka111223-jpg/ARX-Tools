@@ -1,0 +1,10 @@
+title: Check Model
+tooltip: >-
+  Check every sheet in the open model against the ARX drawing standards:
+  drawing number format, project name/number/client, revision fields
+  (drawn/checked/approved by), naming conventions for sheets, views and
+  schedules, and spelling of all text notes and names. Fully offline.
+  Shift+Click to point the checker at a project rules.json / custom
+  dictionary.
+author: ARX
+context: doc-project

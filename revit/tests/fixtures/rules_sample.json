@@ -1,0 +1,25 @@
+{
+  "project": [
+    { "id": "name", "label": "PROJECT NAME", "value": "ARX TOWER" },
+    { "id": "number", "label": "PROJECT NO", "value": "P-100" },
+    { "id": "client", "label": "CLIENT", "value": "ACME DEVELOPMENTS" }
+  ],
+  "spelling": { "language": "en", "customDictionary": [], "ignore": [] },
+  "titleBlockRegion": { "corner": "bottom-right", "widthPct": 30, "heightPct": 25 },
+  "rules": [
+    { "id": "dwgNo", "category": "titleBlock", "label": "DWG NO", "pattern": "^[A-Z]{2}-\\d{3}$", "message": "Drawing number must match AA-000", "severity": "error", "enabled": true },
+    { "id": "rev", "category": "revision", "label": "REV", "message": "Revision must be present", "severity": "error", "enabled": true },
+    { "id": "date", "category": "revision", "label": "DATE", "message": "Date must be present", "severity": "error", "enabled": true },
+    { "id": "drawnBy", "category": "revision", "label": "DRAWN BY", "message": "Drawn-by must be present", "severity": "error", "enabled": true },
+    { "id": "checkedBy", "category": "revision", "label": "CHECKED BY", "message": "Checked-by must be present", "severity": "error", "enabled": true },
+    { "id": "approvedBy", "category": "revision", "label": "APPROVED BY", "message": "Approved-by must be present", "severity": "error", "enabled": true },
+    { "id": "isoDate", "category": "formatting", "label": "ISO date format", "find": "\\b\\d{1,2}/\\d{1,2}/\\d{2,4}\\b", "valid": "^\\d{4}-\\d{2}-\\d{2}$", "message": "Use ISO date format (YYYY-MM-DD)", "severity": "warn", "enabled": true }
+  ],
+  "revit": {
+    "sheetNamePattern": "^[A-Z0-9 \\-]+$",
+    "viewNamePattern": "^[A-Z0-9 \\-]+$",
+    "scheduleNamePattern": "^[A-Z0-9 \\-]+ SCHEDULE$",
+    "paramMap": {},
+    "skipViewsNotOnSheets": true
+  }
+}

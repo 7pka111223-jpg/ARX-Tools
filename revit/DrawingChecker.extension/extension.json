@@ -1,0 +1,13 @@
+{
+  "type": "extension",
+  "builtin": false,
+  "default_enabled": true,
+  "rocket_mode_compatible": true,
+  "name": "DrawingChecker",
+  "description": "Offline checker for Revit sheets and drawings: spelling, drawing number format, project info, revision fields and naming conventions.",
+  "author": "ARX",
+  "author_profile": "https://github.com/7pka111223-jpg/ARX-Tools",
+  "url": "https://github.com/7pka111223-jpg/ARX-Tools",
+  "website": "https://github.com/7pka111223-jpg/ARX-Tools",
+  "dependencies": []
+}

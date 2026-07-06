@@ -1,0 +1,33 @@
+{
+  "docTitle": "broken.rvt",
+  "projectInfo": { "name": "ARX TOWER", "number": "P-999", "client": null },
+  "sheets": [
+    {
+      "elementId": 1001,
+      "number": "A101",
+      "name": "Ground floor plan",
+      "params": {
+        "rev": "C1",
+        "date": "07/01/2026",
+        "drawnBy": "JS",
+        "checkedBy": ""
+      },
+      "missingParams": ["approvedBy"],
+      "textNotes": [
+        { "elementId": 2001, "text": "REFER TO DETALE 5" }
+      ],
+      "placedViews": [
+        {
+          "elementId": 3001,
+          "name": "level 1",
+          "textNotes": [
+            { "elementId": 2002, "text": "ISSUED 12/31/2025" }
+          ]
+        }
+      ],
+      "schedules": [
+        { "elementId": 4001, "name": "Door List" }
+      ]
+    }
+  ]
+}

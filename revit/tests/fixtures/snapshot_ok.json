@@ -1,0 +1,50 @@
+{
+  "docTitle": "sample.rvt",
+  "projectInfo": { "name": "ARX TOWER", "number": "P-100", "client": "ACME DEVELOPMENTS" },
+  "sheets": [
+    {
+      "elementId": 1001,
+      "number": "AR-101",
+      "name": "GROUND FLOOR PLAN",
+      "params": {
+        "rev": "C1",
+        "date": "2026-07-01",
+        "drawnBy": "JS",
+        "checkedBy": "AB",
+        "approvedBy": "CD"
+      },
+      "missingParams": [],
+      "textNotes": [
+        { "elementId": 2001, "text": "REFER TO DETAIL 5 ON AR-102" }
+      ],
+      "placedViews": [
+        {
+          "elementId": 3001,
+          "name": "LEVEL 1 - GROUND FLOOR",
+          "textNotes": [
+            { "elementId": 2002, "text": "CONCRETE SLAB" }
+          ]
+        }
+      ],
+      "schedules": [
+        { "elementId": 4001, "name": "DOOR SCHEDULE" }
+      ]
+    },
+    {
+      "elementId": 1002,
+      "number": "AR-102",
+      "name": "FIRST FLOOR PLAN",
+      "params": {
+        "rev": "C1",
+        "date": "2026-07-01",
+        "drawnBy": "JS",
+        "checkedBy": "AB",
+        "approvedBy": "CD"
+      },
+      "missingParams": [],
+      "textNotes": [],
+      "placedViews": [],
+      "schedules": []
+    }
+  ]
+}
