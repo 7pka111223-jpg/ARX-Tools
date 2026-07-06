@@ -20,6 +20,7 @@ from System.Data import DataTable  # noqa: E402
 from pyrevit import forms, revit, script  # noqa: E402
 
 from drawingchecker import config_locator, rules_store  # noqa: E402
+from drawingchecker.pattern_builder import pattern_from_example  # noqa: E402
 from drawingchecker.report_exporter import generate_csv  # noqa: E402
 from drawingchecker.results_model import build_results  # noqa: E402
 from drawingchecker.revit_actions import (  # noqa: E402
@@ -102,6 +103,10 @@ class CheckerWindow(forms.WPFWindow):
         self.AddWordBtn.Click += self.add_word
         self.AddRuleBtn.Click += self.add_rule
         self.DeleteRuleBtn.Click += self.delete_rule
+        self.GeneratePatternBtn.Click += self.generate_pattern
+        self.TestPatternBtn.Click += self.test_pattern
+        self.ApplyPatternBtn.Click += self.apply_pattern_to_rule
+        self.ApplySheetNameBtn.Click += self.apply_pattern_to_sheet_name
         self.SaveRulesBtn.Click += self.save_rules
         self.ReloadRulesBtn.Click += self.reload_rules_form
         self.ImportRulesBtn.Click += self.import_rules
@@ -115,6 +120,24 @@ class CheckerWindow(forms.WPFWindow):
 
         self.populate_rules_form()
         self.run_check(None, None)
+
+    # ------------------------------------------------------------ exports
+
+    def ask_save_path(self, file_ext, default_name):
+        """Save dialog opening in the remembered export folder; remembers
+        the folder the user picks for next time."""
+        path = forms.save_file(
+            file_ext=file_ext,
+            default_name=default_name,
+            init_dir=get_config_option('export_dir') or '',
+        )
+        if path:
+            try:
+                config.export_dir = os.path.dirname(path)
+                script.save_config()
+            except Exception:
+                pass  # remembering the folder is best-effort
+        return path
 
     # ------------------------------------------------------------- checks
 
@@ -158,7 +181,7 @@ class CheckerWindow(forms.WPFWindow):
     def export_csv(self, sender, args):
         if self.results is None:
             return
-        path = forms.save_file(file_ext='csv', default_name='drawing-check-report')
+        path = self.ask_save_path('csv', 'drawing-check-report')
         if not path:
             return
         with io.open(path, 'w', encoding='utf-8-sig', newline='') as fh:
@@ -169,7 +192,7 @@ class CheckerWindow(forms.WPFWindow):
     def export_pdf(self, sender, args):
         if self.snapshot is None or not self.snapshot['sheets']:
             return
-        path = forms.save_file(file_ext='pdf', default_name='annotated-drawings')
+        path = self.ask_save_path('pdf', 'annotated-drawings')
         if not path:
             return
         folder = os.path.dirname(path)
@@ -316,6 +339,56 @@ class CheckerWindow(forms.WPFWindow):
         self.rules_path = path
         self.RulesPathText.Text = 'Rules file: %s' % path
 
+    # ----------------------------------------------------- pattern builder
+
+    @guarded
+    def generate_pattern(self, sender, args):
+        try:
+            pattern = pattern_from_example(self.ExampleBox.Text, self.VariablePartsBox.Text)
+        except ValueError as err:
+            forms.alert('%s' % err, title='ARX Drawing Checker')
+            return
+        self.GeneratedPatternBox.Text = pattern
+        if self.TestValueBox.Text:
+            self.test_pattern(None, None)
+        else:
+            self.TestResultText.Text = ''
+
+    @guarded
+    def test_pattern(self, sender, args):
+        import re as _re
+        pattern = self.GeneratedPatternBox.Text
+        if not pattern:
+            forms.alert('Generate a pattern first.', title='ARX Drawing Checker')
+            return
+        value = self.TestValueBox.Text
+        if _re.search(pattern, value):
+            self.TestResultText.Text = '"%s" MATCHES the pattern' % value
+        else:
+            self.TestResultText.Text = '"%s" does NOT match the pattern' % value
+
+    @guarded
+    def apply_pattern_to_rule(self, sender, args):
+        pattern = self.GeneratedPatternBox.Text
+        if not pattern:
+            forms.alert('Generate a pattern first.', title='ARX Drawing Checker')
+            return
+        row = self.RulesGrid.SelectedItem
+        if row is None:
+            forms.alert('Select a rule row in the grid first.', title='ARX Drawing Checker')
+            return
+        row['Pattern'] = pattern
+        forms.alert('Pattern applied to rule "%s".\n\nClick "Save Rules and '
+                    'Re-run" to apply.' % row['ID'], title='ARX Drawing Checker')
+
+    @guarded
+    def apply_pattern_to_sheet_name(self, sender, args):
+        pattern = self.GeneratedPatternBox.Text
+        if not pattern:
+            forms.alert('Generate a pattern first.', title='ARX Drawing Checker')
+            return
+        self.SheetNamePatternBox.Text = pattern
+
     @guarded
     def save_rules(self, sender, args):
         try:
@@ -355,7 +428,7 @@ class CheckerWindow(forms.WPFWindow):
         except ValueError as err:
             forms.alert('%s' % err, title='ARX Drawing Checker')
             return
-        path = forms.save_file(file_ext='json', default_name='rules')
+        path = self.ask_save_path('json', 'rules')
         if not path:
             return
         with io.open(path, 'w', encoding='utf-8', newline='\n') as fh:
@@ -381,7 +454,7 @@ class CheckerWindow(forms.WPFWindow):
     @guarded
     def export_dictionary(self, sender, args):
         words = parse_word_list(self.CustomWordsBox.Text)
-        path = forms.save_file(file_ext='txt', default_name='custom_dictionary')
+        path = self.ask_save_path('txt', 'custom_dictionary')
         if not path:
             return
         with io.open(path, 'w', encoding='utf-8', newline='\n') as fh:

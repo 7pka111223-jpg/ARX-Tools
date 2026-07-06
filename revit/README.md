@@ -39,7 +39,13 @@ Clicking **Check Model** opens the checker window with three tabs:
   pattern, find/valid regexes, severity error/warn, message, enabled)
   with *New Rule* / *Delete Selected Rule*, plus project name/number/
   client, sheet/view/schedule naming patterns, and the custom
-  dictionary. *Save Rules and Re-run* validates everything and writes
+  dictionary. The **pattern builder** writes the regexes for you: type
+  an example value (`AA-001`), list the variable part(s) (`001`), click
+  *Generate* — digits stay digits and letters stay letters at the same
+  lengths (`^AA\-\d{3}$` here), everything else must match exactly.
+  Test any value against the generated pattern, then apply it to the
+  selected rule or the sheet-name pattern. Export dialogs remember the
+  last folder you chose. *Save Rules and Re-run* validates everything and writes
   the shared rules.json (never the bundled defaults — user rules go to
   `%APPDATA%\ARX-Tools\rules.json` or the Shift+Click configured path).
   *Import/Export Rules* moves the rules file between machines and the

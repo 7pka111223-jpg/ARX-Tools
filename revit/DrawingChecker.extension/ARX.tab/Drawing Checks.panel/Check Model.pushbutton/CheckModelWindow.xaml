@@ -44,6 +44,7 @@
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <GroupBox Header="Project information (must match exactly; leave blank to skip)"
@@ -85,18 +86,66 @@
               </StackPanel>
             </GroupBox>
 
+            <GroupBox Grid.Row="2" Grid.ColumnSpan="2" Margin="0,0,0,8" Padding="8"
+                      Header="Pattern builder — type an example and its variable part; no regex needed">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,8,4">
+                  <TextBlock Text="Example value (e.g. AA-001)"/>
+                  <TextBox x:Name="ExampleBox" Margin="0,2,0,0" FontFamily="Consolas"/>
+                </StackPanel>
+                <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,8,4">
+                  <TextBlock Text="Variable part(s), comma separated (e.g. 001)"/>
+                  <TextBox x:Name="VariablePartsBox" Margin="0,2,0,0" FontFamily="Consolas"/>
+                </StackPanel>
+                <StackPanel Grid.Row="0" Grid.Column="2" Margin="0,0,8,4">
+                  <TextBlock Text="Generated pattern"/>
+                  <TextBox x:Name="GeneratedPatternBox" Margin="0,2,0,0" FontFamily="Consolas" IsReadOnly="True"/>
+                </StackPanel>
+                <Button x:Name="GeneratePatternBtn" Grid.Row="0" Grid.Column="3" Content="Generate"
+                        Width="90" VerticalAlignment="Bottom" Margin="0,0,0,1"/>
+
+                <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,4,8,0">
+                  <TextBlock Text="Try a value against the pattern"/>
+                  <TextBox x:Name="TestValueBox" Margin="0,2,0,0" FontFamily="Consolas"/>
+                </StackPanel>
+                <Button x:Name="TestPatternBtn" Grid.Row="1" Grid.Column="1" Content="Test"
+                        Width="90" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="0,0,0,1"/>
+                <TextBlock x:Name="TestResultText" Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="2"
+                           VerticalAlignment="Bottom" Margin="0,0,0,4" FontWeight="Bold" Text=""/>
+
+                <StackPanel Orientation="Horizontal" Grid.Row="2" Grid.ColumnSpan="4" Margin="0,6,0,0">
+                  <Button x:Name="ApplyPatternBtn" Content="Apply to Selected Rule" Width="160" Margin="0,0,8,0"/>
+                  <Button x:Name="ApplySheetNameBtn" Content="Apply to Sheet Name Pattern" Width="180" Margin="0,0,8,0"/>
+                  <TextBlock VerticalAlignment="Center" Foreground="Gray"
+                             Text="Example AA-001 with variable 001 gives: AA plus a dash plus any 3 digits."/>
+                </StackPanel>
+              </Grid>
+            </GroupBox>
+
             <GroupBox Header="Custom dictionary (words the spell checker accepts; one per line)"
-                      Grid.Row="2" Grid.ColumnSpan="2" Margin="0,0,0,8" Padding="8">
+                      Grid.Row="3" Grid.ColumnSpan="2" Margin="0,0,0,8" Padding="8">
               <TextBox x:Name="CustomWordsBox" Height="90" AcceptsReturn="True"
                        VerticalScrollBarVisibility="Auto" FontFamily="Consolas"/>
             </GroupBox>
 
-            <StackPanel Orientation="Horizontal" Grid.Row="3" Grid.ColumnSpan="2" Margin="0,4,0,8">
+            <StackPanel Orientation="Horizontal" Grid.Row="4" Grid.ColumnSpan="2" Margin="0,4,0,8">
               <Button x:Name="SaveRulesBtn" Content="Save Rules and Re-run" Width="170" Margin="0,0,8,0"/>
               <Button x:Name="ReloadRulesBtn" Content="Discard Changes" Width="130" Margin="0,0,16,0"/>
               <TextBlock x:Name="RulesPathText" VerticalAlignment="Center" Foreground="Gray"/>
             </StackPanel>
-            <StackPanel Orientation="Horizontal" Grid.Row="4" Grid.ColumnSpan="2" Margin="0,0,0,0">
+            <StackPanel Orientation="Horizontal" Grid.Row="5" Grid.ColumnSpan="2" Margin="0,0,0,0">
               <Button x:Name="ImportRulesBtn" Content="Import Rules..." Width="120" Margin="0,0,8,0"/>
               <Button x:Name="ExportRulesBtn" Content="Export Rules..." Width="120" Margin="0,0,16,0"/>
               <Button x:Name="ImportDictBtn" Content="Import Dictionary..." Width="140" Margin="0,0,8,0"/>
