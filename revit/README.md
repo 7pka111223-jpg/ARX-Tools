@@ -21,9 +21,26 @@ For every (non-placeholder) sheet it checks:
   bundled 121k-word English dictionary plus a drafting-abbreviations list
   (DIA, TYP, GALV, …) and your own custom dictionary.
 
-Results appear in the pyRevit output window; every issue has a **Select**
-link that selects/zooms the offending element in Revit. A CSV report
-(same columns as the web Drawing Checker) can be saved at the end.
+Clicking **Check Model** opens the checker window with three tabs:
+
+- **Results** — the issue grid (severity, category, sheet, found text,
+  message). Buttons: *Re-run Check*, *Export CSV* (same columns as the
+  web Drawing Checker), *Select in Model* (selects/zooms the element),
+  *Add Word to Dictionary* (whitelists the selected spelling issue's word
+  and saves it to the rules file), and *Cloud Text Issues on Drawings* —
+  draws revision clouds around every flagged text note, on a new
+  revision named "ARX Drawing Check" so the clouds are easy to filter
+  and delete later.
+- **Rules** — edit the drawing-number pattern, project name/number/
+  client, sheet/view/schedule naming patterns, toggle the required
+  title-block fields, and manage the custom dictionary. *Save Rules and
+  Re-run* writes the shared rules.json (never the bundled defaults —
+  user rules go to `%APPDATA%\ARX-Tools\rules.json` or the Shift+Click
+  configured path).
+- **Find & Replace** — search every text note on sheets and in placed
+  views, preview the matches, and replace across the whole model in one
+  undoable transaction (match-case optional; the find text is literal,
+  not a regex).
 
 ## Install
 

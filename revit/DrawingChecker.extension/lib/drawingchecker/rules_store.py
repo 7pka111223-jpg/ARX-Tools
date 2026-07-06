@@ -102,3 +102,8 @@ def _is_py2_text(source):
 
 def default_rules():
     return copy.deepcopy(DEFAULT_RULES)
+
+
+def dumps_rules(rules):
+    """Pretty JSON, same formatting family as the JS exportRules."""
+    return json.dumps(rules, indent=2, ensure_ascii=False)
