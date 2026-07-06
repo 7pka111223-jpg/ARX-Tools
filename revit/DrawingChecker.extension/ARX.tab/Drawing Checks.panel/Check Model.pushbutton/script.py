@@ -23,12 +23,19 @@ from drawingchecker import config_locator, rules_store  # noqa: E402
 from drawingchecker.report_exporter import generate_csv  # noqa: E402
 from drawingchecker.results_model import build_results  # noqa: E402
 from drawingchecker.revit_actions import (  # noqa: E402
+    export_annotated_pdf,
     replace_in_text_notes,
     select_and_show,
 )
 from drawingchecker.revit_adapter import build_snapshot  # noqa: E402
 from drawingchecker.rules_engine import collect_text_entries, evaluate_rules  # noqa: E402
-from drawingchecker.rules_form import form_to_rules, parse_word_list, rules_to_form  # noqa: E402
+from drawingchecker.rules_form import (  # noqa: E402
+    form_to_rules,
+    grid_to_rules,
+    parse_word_list,
+    rules_to_form,
+    rules_to_grid,
+)
 from drawingchecker.spell_checker import check_spelling  # noqa: E402
 from drawingchecker.text_search import build_replacements, find_matches  # noqa: E402
 from drawingchecker.wordlist import (  # noqa: E402
@@ -41,13 +48,11 @@ config = script.get_config()
 
 XAML_FILE = os.path.join(os.path.dirname(__file__), 'CheckModelWindow.xaml')
 
-REVISION_CHECKBOXES = {
-    'rev': 'RevRuleCheck',
-    'date': 'DateRuleCheck',
-    'drawnBy': 'DrawnByRuleCheck',
-    'checkedBy': 'CheckedByRuleCheck',
-    'approvedBy': 'ApprovedByRuleCheck',
-}
+RULES_GRID_COLUMNS = (
+    ('Enabled', 'enabled'), ('ID', 'id'), ('Category', 'category'),
+    ('Label', 'label'), ('Pattern', 'pattern'), ('Find', 'find'),
+    ('Valid', 'valid'), ('Severity', 'severity'), ('Message', 'message'),
+)
 
 
 def get_config_option(name):
@@ -91,9 +96,12 @@ class CheckerWindow(forms.WPFWindow):
 
         self.RunCheckBtn.Click += self.run_check
         self.ExportCsvBtn.Click += self.export_csv
+        self.ExportPdfBtn.Click += self.export_pdf
         self.SelectElementBtn.Click += self.select_element
         self.ResultsGrid.MouseDoubleClick += self.select_element
         self.AddWordBtn.Click += self.add_word
+        self.AddRuleBtn.Click += self.add_rule
+        self.DeleteRuleBtn.Click += self.delete_rule
         self.SaveRulesBtn.Click += self.save_rules
         self.ReloadRulesBtn.Click += self.reload_rules_form
         self.ImportRulesBtn.Click += self.import_rules
@@ -157,6 +165,27 @@ class CheckerWindow(forms.WPFWindow):
             fh.write(generate_csv(self.results))
         forms.alert('Report saved to:\n%s' % path, title='ARX Drawing Checker')
 
+    @guarded
+    def export_pdf(self, sender, args):
+        if self.snapshot is None or not self.snapshot['sheets']:
+            return
+        path = forms.save_file(file_ext='pdf', default_name='annotated-drawings')
+        if not path:
+            return
+        folder = os.path.dirname(path)
+        file_name = os.path.splitext(os.path.basename(path))[0]
+        try:
+            sheet_count, marker_count = export_annotated_pdf(
+                self.doc, self.snapshot, self.issues, folder, file_name)
+        except RuntimeError as err:
+            forms.alert('%s' % err, title='ARX Drawing Checker')
+            return
+        forms.alert(
+            'Exported %d sheet(s) with %d red issue marker(s) to:\n%s\n\n'
+            'The markers exist only in the PDF — the model is unchanged.'
+            % (sheet_count, marker_count, path),
+            title='ARX Drawing Checker')
+
     def selected_row(self, grid):
         row = grid.SelectedItem
         if row is None:
@@ -201,30 +230,72 @@ class CheckerWindow(forms.WPFWindow):
         self.ProjectNameBox.Text = form['projectName']
         self.ProjectNumberBox.Text = form['projectNumber']
         self.ClientBox.Text = form['client']
-        self.DwgNoPatternBox.Text = form['dwgNoPattern']
         self.SheetNamePatternBox.Text = form['sheetNamePattern']
         self.ViewNamePatternBox.Text = form['viewNamePattern']
         self.ScheduleNamePatternBox.Text = form['scheduleNamePattern']
-        for rule_id, checkbox_name in REVISION_CHECKBOXES.items():
-            getattr(self, checkbox_name).IsChecked = form['revisionEnabled'].get(rule_id, False)
         self.CustomWordsBox.Text = form['customWords']
         self.RulesPathText.Text = 'Rules file: %s' % self.rules_save_path()
+
+        self.rules_table = DataTable('rules')
+        import System
+        self.rules_table.Columns.Add('Enabled', System.Boolean)
+        for header, _key in RULES_GRID_COLUMNS[1:]:
+            self.rules_table.Columns.Add(header)
+        for row in rules_to_grid(self.rules):
+            self.rules_table.Rows.Add(
+                row['enabled'], row['id'], row['category'], row['label'],
+                row['pattern'], row['find'], row['valid'], row['severity'],
+                row['message'])
+        self.RulesGrid.ItemsSource = self.rules_table.DefaultView
 
     def read_rules_form(self):
         return {
             'projectName': self.ProjectNameBox.Text,
             'projectNumber': self.ProjectNumberBox.Text,
             'client': self.ClientBox.Text,
-            'dwgNoPattern': self.DwgNoPatternBox.Text,
             'sheetNamePattern': self.SheetNamePatternBox.Text,
             'viewNamePattern': self.ViewNamePatternBox.Text,
             'scheduleNamePattern': self.ScheduleNamePatternBox.Text,
-            'revisionEnabled': dict(
-                (rule_id, bool(getattr(self, checkbox_name).IsChecked))
-                for rule_id, checkbox_name in REVISION_CHECKBOXES.items()
-            ),
             'customWords': self.CustomWordsBox.Text,
         }
+
+    def read_rules_grid(self):
+        # commit any in-progress cell edit before reading the table back
+        from System.Windows.Controls import DataGridEditingUnit
+        self.RulesGrid.CommitEdit(DataGridEditingUnit.Cell, True)
+        self.RulesGrid.CommitEdit(DataGridEditingUnit.Row, True)
+        rows = []
+        for table_row in self.rules_table.Rows:
+            row = {}
+            for header, key in RULES_GRID_COLUMNS:
+                value = table_row[header]
+                if key == 'enabled':
+                    row[key] = bool(value) if value is not None and '%s' % value != '' else False
+                else:
+                    row[key] = '%s' % value if value is not None else ''
+            rows.append(row)
+        return rows
+
+    def rules_from_ui(self):
+        """Grid + form fields -> a validated rules dict (ValueError on bad input)."""
+        updated = grid_to_rules(self.rules, self.read_rules_grid())
+        return form_to_rules(updated, self.read_rules_form())
+
+    @guarded
+    def add_rule(self, sender, args):
+        count = self.rules_table.Rows.Count
+        self.rules_table.Rows.Add(
+            True, 'rule%d' % (count + 1), 'titleBlock', '', '', '', '', 'warn', '')
+        self.RulesGrid.ScrollIntoView(self.RulesGrid.Items[self.RulesGrid.Items.Count - 1])
+
+    @guarded
+    def delete_rule(self, sender, args):
+        row = self.RulesGrid.SelectedItem
+        if row is None:
+            forms.alert('Select a rule row first.', title='ARX Drawing Checker')
+            return
+        row.Row.Delete()
+        self.rules_table.AcceptChanges()
 
     def rules_save_path(self):
         # Never write over the bundled defaults; user rules live in APPDATA
@@ -248,11 +319,12 @@ class CheckerWindow(forms.WPFWindow):
     @guarded
     def save_rules(self, sender, args):
         try:
-            self.rules = form_to_rules(self.rules, self.read_rules_form())
+            self.rules = self.rules_from_ui()
         except ValueError as err:
             forms.alert('%s' % err, title='ARX Drawing Checker')
             return
         self.write_rules_file()
+        self.populate_rules_form()
         self.run_check(None, None)
         self.MainTabs.SelectedIndex = 0
 
@@ -279,7 +351,7 @@ class CheckerWindow(forms.WPFWindow):
     @guarded
     def export_rules(self, sender, args):
         try:
-            rules = form_to_rules(self.rules, self.read_rules_form())
+            rules = self.rules_from_ui()
         except ValueError as err:
             forms.alert('%s' % err, title='ARX Drawing Checker')
             return

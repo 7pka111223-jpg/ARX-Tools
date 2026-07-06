@@ -15,7 +15,8 @@
           </Grid.RowDefinitions>
           <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,8">
             <Button x:Name="RunCheckBtn" Content="Re-run Check" Width="110" Margin="0,0,8,0"/>
-            <Button x:Name="ExportCsvBtn" Content="Export CSV..." Width="110" Margin="0,0,16,0"/>
+            <Button x:Name="ExportCsvBtn" Content="Export CSV..." Width="110" Margin="0,0,8,0"/>
+            <Button x:Name="ExportPdfBtn" Content="Export Annotated PDF..." Width="170" Margin="0,0,16,0"/>
             <TextBlock x:Name="SummaryText" VerticalAlignment="Center" FontWeight="Bold" Text=""/>
           </StackPanel>
           <DataGrid x:Name="ResultsGrid" Grid.Row="1" AutoGenerateColumns="True"
@@ -42,6 +43,7 @@
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <GroupBox Header="Project information (must match exactly; leave blank to skip)"
@@ -56,11 +58,9 @@
               </StackPanel>
             </GroupBox>
 
-            <GroupBox Header="Format rules (regular expressions; leave blank to disable)"
+            <GroupBox Header="Naming conventions (regular expressions; leave blank to disable)"
                       Grid.Row="0" Grid.Column="1" Margin="0,0,0,8" Padding="8">
               <StackPanel>
-                <TextBlock Text="Drawing (sheet) number pattern"/>
-                <TextBox x:Name="DwgNoPatternBox" Margin="0,2,0,8" FontFamily="Consolas"/>
                 <TextBlock Text="Sheet name pattern"/>
                 <TextBox x:Name="SheetNamePatternBox" Margin="0,2,0,8" FontFamily="Consolas"/>
                 <TextBlock Text="View name pattern"/>
@@ -70,29 +70,33 @@
               </StackPanel>
             </GroupBox>
 
-            <GroupBox Header="Required title block fields" Grid.Row="1" Grid.Column="0"
-                      Margin="0,0,8,8" Padding="8">
+            <GroupBox Grid.Row="1" Grid.ColumnSpan="2" Margin="0,0,0,8" Padding="8"
+                      Header="Rules — add, edit or remove checks (Pattern for titleBlock/revision; Find + Valid for formatting)">
               <StackPanel>
-                <CheckBox x:Name="RevRuleCheck" Content="Revision (REV)" Margin="0,2"/>
-                <CheckBox x:Name="DateRuleCheck" Content="Sheet issue date (DATE)" Margin="0,2"/>
-                <CheckBox x:Name="DrawnByRuleCheck" Content="Drawn by" Margin="0,2"/>
-                <CheckBox x:Name="CheckedByRuleCheck" Content="Checked by" Margin="0,2"/>
-                <CheckBox x:Name="ApprovedByRuleCheck" Content="Approved by" Margin="0,2"/>
+                <DataGrid x:Name="RulesGrid" Height="170" AutoGenerateColumns="True"
+                          CanUserAddRows="False" CanUserDeleteRows="False"
+                          HeadersVisibility="Column" GridLinesVisibility="Horizontal"/>
+                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                  <Button x:Name="AddRuleBtn" Content="New Rule" Width="100" Margin="0,0,8,0"/>
+                  <Button x:Name="DeleteRuleBtn" Content="Delete Selected Rule" Width="150" Margin="0,0,16,0"/>
+                  <TextBlock VerticalAlignment="Center" Foreground="Gray"
+                             Text="Category: titleBlock, revision or formatting. Severity: error or warn. Edit cells directly."/>
+                </StackPanel>
               </StackPanel>
             </GroupBox>
 
             <GroupBox Header="Custom dictionary (words the spell checker accepts; one per line)"
-                      Grid.Row="1" Grid.Column="1" Margin="0,0,0,8" Padding="8">
-              <TextBox x:Name="CustomWordsBox" Height="120" AcceptsReturn="True"
+                      Grid.Row="2" Grid.ColumnSpan="2" Margin="0,0,0,8" Padding="8">
+              <TextBox x:Name="CustomWordsBox" Height="90" AcceptsReturn="True"
                        VerticalScrollBarVisibility="Auto" FontFamily="Consolas"/>
             </GroupBox>
 
-            <StackPanel Orientation="Horizontal" Grid.Row="2" Grid.ColumnSpan="2" Margin="0,4,0,8">
+            <StackPanel Orientation="Horizontal" Grid.Row="3" Grid.ColumnSpan="2" Margin="0,4,0,8">
               <Button x:Name="SaveRulesBtn" Content="Save Rules and Re-run" Width="170" Margin="0,0,8,0"/>
               <Button x:Name="ReloadRulesBtn" Content="Discard Changes" Width="130" Margin="0,0,16,0"/>
               <TextBlock x:Name="RulesPathText" VerticalAlignment="Center" Foreground="Gray"/>
             </StackPanel>
-            <StackPanel Orientation="Horizontal" Grid.Row="3" Grid.ColumnSpan="2" Margin="0,0,0,0">
+            <StackPanel Orientation="Horizontal" Grid.Row="4" Grid.ColumnSpan="2" Margin="0,0,0,0">
               <Button x:Name="ImportRulesBtn" Content="Import Rules..." Width="120" Margin="0,0,8,0"/>
               <Button x:Name="ExportRulesBtn" Content="Export Rules..." Width="120" Margin="0,0,16,0"/>
               <Button x:Name="ImportDictBtn" Content="Import Dictionary..." Width="140" Margin="0,0,8,0"/>

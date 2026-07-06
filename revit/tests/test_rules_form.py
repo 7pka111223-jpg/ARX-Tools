@@ -3,7 +3,13 @@ import unittest
 
 from . import _path  # noqa: F401
 from drawingchecker import rules_store
-from drawingchecker.rules_form import form_to_rules, parse_word_list, rules_to_form
+from drawingchecker.rules_form import (
+    form_to_rules,
+    grid_to_rules,
+    parse_word_list,
+    rules_to_form,
+    rules_to_grid,
+)
 
 
 class RulesToFormTests(unittest.TestCase):
@@ -61,6 +67,70 @@ class FormToRulesTests(unittest.TestCase):
         self.form['projectNumber'] = 'P-100'
         updated = form_to_rules(self.rules, self.form)
         rules_store.load_rules(rules_store.dumps_rules(updated))
+
+
+class RulesGridTests(unittest.TestCase):
+    def setUp(self):
+        self.rules = rules_store.default_rules()
+
+    def test_grid_round_trips_defaults(self):
+        rows = rules_to_grid(self.rules)
+        self.assertEqual(len(rows), 7)
+        self.assertEqual(rows[0]['id'], 'dwgNo')
+        self.assertTrue(rows[0]['enabled'])
+        rebuilt = grid_to_rules(self.rules, rows)
+        self.assertEqual(rebuilt['rules'], self.rules['rules'])
+
+    def test_edit_add_and_delete_rules(self):
+        rows = rules_to_grid(self.rules)
+        rows[0]['pattern'] = '^S\\d{3}$'          # edit dwgNo
+        rows = [r for r in rows if r['id'] != 'approvedBy']  # delete
+        rows.append({'enabled': True, 'id': 'scale', 'category': 'titleBlock',
+                     'label': 'SCALE', 'pattern': '^1:\\d+$', 'find': '', 'valid': '',
+                     'severity': 'warn', 'message': 'Scale must look like 1:100'})
+        rebuilt = grid_to_rules(self.rules, rows)
+        ids = [r['id'] for r in rebuilt['rules']]
+        self.assertIn('scale', ids)
+        self.assertNotIn('approvedBy', ids)
+        dwg = [r for r in rebuilt['rules'] if r['id'] == 'dwgNo'][0]
+        self.assertEqual(dwg['pattern'], '^S\\d{3}$')
+        rules_store.load_rules(rules_store.dumps_rules(rebuilt))  # still valid
+
+    def test_blank_rows_skipped(self):
+        rows = rules_to_grid(self.rules)
+        rows.append({'enabled': False, 'id': '', 'category': '', 'label': '',
+                     'pattern': '', 'find': '', 'valid': '', 'severity': '', 'message': ''})
+        rebuilt = grid_to_rules(self.rules, rows)
+        self.assertEqual(len(rebuilt['rules']), 7)
+
+    def test_duplicate_id_rejected(self):
+        rows = rules_to_grid(self.rules)
+        rows.append(dict(rows[0]))
+        with self.assertRaises(ValueError):
+            grid_to_rules(self.rules, rows)
+
+    def test_bad_category_and_severity_rejected(self):
+        rows = rules_to_grid(self.rules)
+        rows[0]['category'] = 'naming'
+        with self.assertRaises(ValueError):
+            grid_to_rules(self.rules, rows)
+        rows = rules_to_grid(self.rules)
+        rows[0]['severity'] = 'fatal'
+        with self.assertRaises(ValueError):
+            grid_to_rules(self.rules, rows)
+
+    def test_formatting_rule_requires_find_and_valid(self):
+        rows = rules_to_grid(self.rules)
+        iso = [r for r in rows if r['id'] == 'isoDate'][0]
+        iso['valid'] = ''
+        with self.assertRaises(ValueError):
+            grid_to_rules(self.rules, rows)
+
+    def test_invalid_regex_rejected(self):
+        rows = rules_to_grid(self.rules)
+        rows[0]['pattern'] = '['
+        with self.assertRaises(ValueError):
+            grid_to_rules(self.rules, rows)
 
 
 class ParseWordListTests(unittest.TestCase):

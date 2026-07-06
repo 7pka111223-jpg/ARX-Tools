@@ -28,14 +28,23 @@ Clicking **Check Model** opens the checker window with three tabs:
   to the offending element in Revit. *Add Word to Dictionary* whitelists
   the selected spelling issue's word and saves it to the rules file;
   *Export CSV* writes the same columns as the web Drawing Checker.
-- **Rules** — edit the drawing-number pattern, project name/number/
-  client, sheet/view/schedule naming patterns, toggle the required
-  title-block fields, and manage the custom dictionary. *Save Rules and
-  Re-run* writes the shared rules.json (never the bundled defaults —
-  user rules go to `%APPDATA%\ARX-Tools\rules.json` or the Shift+Click
-  configured path). *Import/Export Rules* moves the rules file between
-  machines and the web tool; *Import/Export Dictionary* does the same
-  for the plain-text word list.
+  *Export Annotated PDF* prints all checked sheets to one combined PDF
+  (Revit 2022+ native PDF export) with the mistakes marked in red on the
+  drawings — a `>>` marker beside every flagged text note plus a summary
+  block per sheet for its other issues. The markers are temporary
+  annotations created just for the export and deleted right after; the
+  model is left unchanged.
+- **Rules** — the same rule management as the web tool: an editable
+  grid of all rules (ID, category titleBlock/revision/formatting, label,
+  pattern, find/valid regexes, severity error/warn, message, enabled)
+  with *New Rule* / *Delete Selected Rule*, plus project name/number/
+  client, sheet/view/schedule naming patterns, and the custom
+  dictionary. *Save Rules and Re-run* validates everything and writes
+  the shared rules.json (never the bundled defaults — user rules go to
+  `%APPDATA%\ARX-Tools\rules.json` or the Shift+Click configured path).
+  *Import/Export Rules* moves the rules file between machines and the
+  web tool; *Import/Export Dictionary* does the same for the plain-text
+  word list.
 - **Find & Replace** — search every text note on sheets and in placed
   views, preview the matches, and replace across the whole model in one
   undoable transaction (match-case optional; the find text is literal,
