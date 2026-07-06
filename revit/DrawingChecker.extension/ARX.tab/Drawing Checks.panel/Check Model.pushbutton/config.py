@@ -16,6 +16,15 @@ CLEAR = 'Clear configured paths (use defaults)'
 SHOW = 'Show current configuration'
 
 
+def get_config_option(name):
+    # pyRevit's get_option raises (rather than returning the default) when
+    # the option was never saved and the default is None.
+    try:
+        return config.get_option(name, None) or None
+    except Exception:
+        return None
+
+
 def main():
     choice = forms.CommandSwitchWindow.show(
         [PICK_RULES, PICK_DICTIONARY, CLEAR, SHOW],
@@ -32,15 +41,15 @@ def main():
             config.custom_dictionary_path = path
             script.save_config()
     elif choice == CLEAR:
-        config.rules_path = None
-        config.custom_dictionary_path = None
+        config.rules_path = ''
+        config.custom_dictionary_path = ''
         script.save_config()
     elif choice == SHOW:
         forms.alert(
             'Rules file: %s\nCustom dictionary: %s'
             % (
-                config.get_option('rules_path', None) or '(default)',
-                config.get_option('custom_dictionary_path', None) or '(none)',
+                get_config_option('rules_path') or '(default)',
+                get_config_option('custom_dictionary_path') or '(none)',
             ),
             title='ARX Drawing Checker',
         )

@@ -32,8 +32,17 @@ config = script.get_config()
 SEVERITY_ORDER = {'error': 0, 'warn': 1}
 
 
+def get_config_option(name):
+    # pyRevit's get_option raises (rather than returning the default) when
+    # the option was never saved and the default is None.
+    try:
+        return config.get_option(name, None) or None
+    except Exception:
+        return None
+
+
 def load_rules():
-    rules_path = config_locator.find_rules_path(config.get_option('rules_path', None))
+    rules_path = config_locator.find_rules_path(get_config_option('rules_path'))
     with io.open(rules_path, 'r', encoding='utf-8') as fh:
         return rules_path, rules_store.load_rules(fh.read())
 
@@ -41,7 +50,7 @@ def load_rules():
 def load_extra_words():
     extra = set(load_optional_wordlist(ABBREVIATIONS_PATH))
     dictionary_path = config_locator.find_custom_dictionary_path(
-        config.get_option('custom_dictionary_path', None)
+        get_config_option('custom_dictionary_path')
     )
     extra.update(load_optional_wordlist(dictionary_path))
     return extra
