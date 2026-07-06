@@ -23,13 +23,12 @@ from drawingchecker import config_locator, rules_store  # noqa: E402
 from drawingchecker.report_exporter import generate_csv  # noqa: E402
 from drawingchecker.results_model import build_results  # noqa: E402
 from drawingchecker.revit_actions import (  # noqa: E402
-    cloud_elements,
     replace_in_text_notes,
     select_and_show,
 )
 from drawingchecker.revit_adapter import build_snapshot  # noqa: E402
 from drawingchecker.rules_engine import collect_text_entries, evaluate_rules  # noqa: E402
-from drawingchecker.rules_form import form_to_rules, rules_to_form  # noqa: E402
+from drawingchecker.rules_form import form_to_rules, parse_word_list, rules_to_form  # noqa: E402
 from drawingchecker.spell_checker import check_spelling  # noqa: E402
 from drawingchecker.text_search import build_replacements, find_matches  # noqa: E402
 from drawingchecker.wordlist import (  # noqa: E402
@@ -79,18 +78,6 @@ def make_table(columns, rows):
     return table
 
 
-def collect_text_note_ids(snapshot):
-    ids = set()
-    for sheet in snapshot.get('sheets', []):
-        for note in sheet.get('textNotes', []):
-            ids.add(note.get('elementId'))
-        for view in sheet.get('placedViews', []):
-            for note in view.get('textNotes', []):
-                ids.add(note.get('elementId'))
-    ids.discard(None)
-    return ids
-
-
 class CheckerWindow(forms.WPFWindow):
     def __init__(self, uidoc, rules_path, rules):
         forms.WPFWindow.__init__(self, XAML_FILE)
@@ -105,13 +92,18 @@ class CheckerWindow(forms.WPFWindow):
         self.RunCheckBtn.Click += self.run_check
         self.ExportCsvBtn.Click += self.export_csv
         self.SelectElementBtn.Click += self.select_element
+        self.ResultsGrid.MouseDoubleClick += self.select_element
         self.AddWordBtn.Click += self.add_word
-        self.CloudBtn.Click += self.cloud_issues
         self.SaveRulesBtn.Click += self.save_rules
         self.ReloadRulesBtn.Click += self.reload_rules_form
+        self.ImportRulesBtn.Click += self.import_rules
+        self.ExportRulesBtn.Click += self.export_rules
+        self.ImportDictBtn.Click += self.import_dictionary
+        self.ExportDictBtn.Click += self.export_dictionary
         self.FindAllBtn.Click += self.find_all
         self.ReplaceAllBtn.Click += self.replace_all
         self.SelectMatchBtn.Click += self.select_match
+        self.FindGrid.MouseDoubleClick += self.select_match
 
         self.populate_rules_form()
         self.run_check(None, None)
@@ -182,7 +174,8 @@ class CheckerWindow(forms.WPFWindow):
                         title='ARX Drawing Checker')
             return
         select_and_show(self.uidoc, int(element_id))
-        self.ResultsHint.Text = 'Element selected — close this window to see it highlighted.'
+        self.ResultsHint.Text = ('Element selected and zoomed — close this window '
+                                 'to work on it, then run Check Model again.')
 
     @guarded
     def add_word(self, sender, args):
@@ -200,19 +193,6 @@ class CheckerWindow(forms.WPFWindow):
             self.write_rules_file()
             self.populate_rules_form()
             self.run_check(None, None)
-
-    @guarded
-    def cloud_issues(self, sender, args):
-        note_ids = collect_text_note_ids(self.snapshot or {})
-        ids = [i.get('elementId') for i in self.issues if i.get('elementId') in note_ids]
-        if not ids:
-            forms.alert('No text-note issues to cloud.', title='ARX Drawing Checker')
-            return
-        clouded, skipped = cloud_elements(self.doc, ids)
-        message = 'Drew %d revision cloud(s) on a new revision named "ARX Drawing Check".' % clouded
-        if skipped:
-            message += '\n%d element(s) could not be clouded.' % skipped
-        forms.alert(message, title='ARX Drawing Checker')
 
     # -------------------------------------------------------------- rules
 
@@ -279,6 +259,63 @@ class CheckerWindow(forms.WPFWindow):
     @guarded
     def reload_rules_form(self, sender, args):
         self.populate_rules_form()
+
+    @guarded
+    def import_rules(self, sender, args):
+        path = forms.pick_file(file_ext='json')
+        if not path:
+            return
+        try:
+            with io.open(path, 'r', encoding='utf-8') as fh:
+                self.rules = rules_store.load_rules(fh.read())
+        except (ValueError, IOError) as err:
+            forms.alert('Could not import rules:\n%s' % err, title='ARX Drawing Checker')
+            return
+        self.rules_path = path  # future saves go back to the imported file
+        self.populate_rules_form()
+        self.run_check(None, None)
+        forms.alert('Rules imported from:\n%s' % path, title='ARX Drawing Checker')
+
+    @guarded
+    def export_rules(self, sender, args):
+        try:
+            rules = form_to_rules(self.rules, self.read_rules_form())
+        except ValueError as err:
+            forms.alert('%s' % err, title='ARX Drawing Checker')
+            return
+        path = forms.save_file(file_ext='json', default_name='rules')
+        if not path:
+            return
+        with io.open(path, 'w', encoding='utf-8', newline='\n') as fh:
+            fh.write(rules_store.dumps_rules(rules))
+        forms.alert('Rules exported to:\n%s\n\nThis file also works in the web '
+                    'Drawing Checker.' % path, title='ARX Drawing Checker')
+
+    @guarded
+    def import_dictionary(self, sender, args):
+        path = forms.pick_file(file_ext='txt')
+        if not path:
+            return
+        with io.open(path, 'r', encoding='utf-8') as fh:
+            imported = parse_word_list(fh.read())
+        existing = parse_word_list(self.CustomWordsBox.Text)
+        added = [w for w in imported if w not in existing]
+        self.CustomWordsBox.Text = '\n'.join(existing + added)
+        forms.alert('%d word(s) added to the list (%d already present).\n\n'
+                    'Click "Save Rules and Re-run" to apply.'
+                    % (len(added), len(imported) - len(added)),
+                    title='ARX Drawing Checker')
+
+    @guarded
+    def export_dictionary(self, sender, args):
+        words = parse_word_list(self.CustomWordsBox.Text)
+        path = forms.save_file(file_ext='txt', default_name='custom_dictionary')
+        if not path:
+            return
+        with io.open(path, 'w', encoding='utf-8', newline='\n') as fh:
+            fh.write('\n'.join(words) + ('\n' if words else ''))
+        forms.alert('Exported %d word(s) to:\n%s' % (len(words), path),
+                    title='ARX Drawing Checker')
 
     # ----------------------------------------------------- find & replace
 

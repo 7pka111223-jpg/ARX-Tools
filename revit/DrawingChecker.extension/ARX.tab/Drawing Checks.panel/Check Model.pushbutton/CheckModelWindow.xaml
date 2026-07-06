@@ -22,11 +22,10 @@
                     IsReadOnly="True" SelectionMode="Single" HeadersVisibility="Column"
                     GridLinesVisibility="Horizontal" CanUserAddRows="False"/>
           <StackPanel Orientation="Horizontal" Grid.Row="2" Margin="0,8,0,0">
-            <Button x:Name="SelectElementBtn" Content="Select in Model" Width="130" Margin="0,0,8,0"/>
+            <Button x:Name="SelectElementBtn" Content="Zoom to Mistake" Width="130" Margin="0,0,8,0"/>
             <Button x:Name="AddWordBtn" Content="Add Word to Dictionary" Width="170" Margin="0,0,8,0"/>
-            <Button x:Name="CloudBtn" Content="Cloud Text Issues on Drawings" Width="210" Margin="0,0,8,0"/>
             <TextBlock x:Name="ResultsHint" VerticalAlignment="Center" Foreground="Gray"
-                       Text="Select a row first for the element/word buttons."/>
+                       Text="Double-click a row (or select it and click Zoom) to jump to the element."/>
           </StackPanel>
         </Grid>
       </TabItem>
@@ -88,10 +87,18 @@
                        VerticalScrollBarVisibility="Auto" FontFamily="Consolas"/>
             </GroupBox>
 
-            <StackPanel Orientation="Horizontal" Grid.Row="2" Grid.ColumnSpan="2" Margin="0,4,0,0">
+            <StackPanel Orientation="Horizontal" Grid.Row="2" Grid.ColumnSpan="2" Margin="0,4,0,8">
               <Button x:Name="SaveRulesBtn" Content="Save Rules and Re-run" Width="170" Margin="0,0,8,0"/>
               <Button x:Name="ReloadRulesBtn" Content="Discard Changes" Width="130" Margin="0,0,16,0"/>
               <TextBlock x:Name="RulesPathText" VerticalAlignment="Center" Foreground="Gray"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Grid.Row="3" Grid.ColumnSpan="2" Margin="0,0,0,0">
+              <Button x:Name="ImportRulesBtn" Content="Import Rules..." Width="120" Margin="0,0,8,0"/>
+              <Button x:Name="ExportRulesBtn" Content="Export Rules..." Width="120" Margin="0,0,16,0"/>
+              <Button x:Name="ImportDictBtn" Content="Import Dictionary..." Width="140" Margin="0,0,8,0"/>
+              <Button x:Name="ExportDictBtn" Content="Export Dictionary..." Width="140" Margin="0,0,16,0"/>
+              <TextBlock VerticalAlignment="Center" Foreground="Gray"
+                         Text="Rules files are shared with the web Drawing Checker; dictionaries are plain text, one word per line."/>
             </StackPanel>
           </Grid>
         </ScrollViewer>
