@@ -69,3 +69,21 @@ Pure logic lives in the shared `drawingchecker` library
 adapter, actions, and the tkinter window. Tests:
 
     python3 -m unittest discover -s civil3d/tests -t civil3d
+
+## Native plugin (NETLOAD) — Civil 3D / AutoCAD 2025+
+
+`civil3d/plugin/` contains a C#/.NET 8 version of the checker that loads
+directly into Civil 3D with `NETLOAD` (command **ARXCHECK**) — no Python
+required. It embeds the shared wordlist and default rules and reads the
+same `%APPDATA%\ARX-Tools\rules.json`. Build with the .NET 8 SDK:
+
+    dotnet build civil3d/plugin -c Release
+    # -> civil3d/plugin/bin/Release/ArxDrawingChecker.dll
+
+Headless smoke tests for the ported core:
+
+    ARX_DATA_DIR=revit/DrawingChecker.extension/lib/drawingchecker/data \
+      dotnet run --project civil3d/plugin-tests -c Release
+
+The plugin targets AutoCAD.NET 25.x (2025/2026). For 2024 and older use
+the COM-based checker above.
