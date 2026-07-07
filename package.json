@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "test:py": "python3 -m unittest discover -s revit/tests -t revit",
+    "test:py": "python3 -m unittest discover -s revit/tests -t revit && python3 -m unittest discover -s civil3d/tests -t civil3d",
     "build": "node build.js"
   },
   "dependencies": {

@@ -16,6 +16,16 @@ all drawing text. It shares the rules JSON schema with the web Drawing
 Checker, so one rules file drives both tools. See
 [`revit/README.md`](revit/README.md) for install and usage.
 
+## Civil 3D / AutoCAD Drawing Checker
+
+The same checker for Civil 3D and AutoCAD drawings: connects to the
+running session over COM and checks every layout's title block
+attributes, drawing numbers, text spelling, naming and formatting —
+with zoom-to-mistake, find & replace, and annotated PDF export. Shares
+the rules JSON and dictionary with the other two tools. See
+[`civil3d/README.md`](civil3d/README.md); build the distributable with
+`civil3d/tools/build_package.sh`.
+
 ## Development
 
     npm install
