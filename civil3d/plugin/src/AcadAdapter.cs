@@ -39,7 +39,84 @@ public static class Adapter
         return (false, null);
     }
 
-    public static Snapshot BuildSnapshot(Database db, string docName, JsonObject rules)
+    private const int MaxBlockDepth = 2;
+
+    private static void CollectTexts(Transaction tr, BlockTableRecord btr, List<TextItem> texts,
+                                     Dictionary<string, string> attributes, string contextSuffix,
+                                     string overrideHandle, int depth)
+    {
+        foreach (ObjectId id in btr)
+        {
+            var handle = overrideHandle ?? id.Handle.ToString();
+            void Add(string text, string context)
+            {
+                if (!string.IsNullOrWhiteSpace(text))
+                    texts.Add(new TextItem
+                    {
+                        Handle = handle,
+                        Text = text.Trim(),
+                        Context = context + contextSuffix,
+                    });
+            }
+
+            switch (tr.GetObject(id, OpenMode.ForRead))
+            {
+                case DBText text:
+                    Add(text.TextString, "text note");
+                    break;
+                case MText mtext:
+                    // MText.Text is the plain text with inline codes stripped
+                    Add(mtext.Text, "text note");
+                    break;
+                case MLeader mleader:
+                    try
+                    {
+                        if (mleader.ContentType == ContentType.MTextContent && mleader.MText != null)
+                            Add(mleader.MText.Text, "text note (leader)");
+                    }
+                    catch { /* block-content leaders have no MText */ }
+                    break;
+                case Dimension dimension:
+                    var dimText = dimension.DimensionText;
+                    if (!string.IsNullOrWhiteSpace(dimText) && dimText.Trim() != "<>")
+                        Add(dimText.Replace("<>", " "), "text note (dimension override)");
+                    break;
+                case Table table:
+                    for (int row = 0; row < table.Rows.Count; row++)
+                        for (int col = 0; col < table.Columns.Count; col++)
+                        {
+                            try { Add(table.Cells[row, col].TextString, "text note in table"); }
+                            catch { /* merged / non-text cells */ }
+                        }
+                    break;
+                case BlockReference reference:
+                    if (attributes != null)
+                        foreach (ObjectId attId in reference.AttributeCollection)
+                        {
+                            if (tr.GetObject(attId, OpenMode.ForRead) is AttributeReference attribute
+                                && !string.IsNullOrEmpty(attribute.Tag))
+                                attributes.TryAdd(attribute.Tag, attribute.TextString);
+                        }
+                    if (depth < MaxBlockDepth
+                        && tr.GetObject(reference.BlockTableRecord, OpenMode.ForRead)
+                            is BlockTableRecord definition
+                        && !definition.IsFromExternalReference && !definition.IsLayout
+                        && !definition.Name.StartsWith("*"))
+                    {
+                        // text inside the block definition; zoom targets the insert,
+                        // and the "in block" context excludes it from find & replace
+                        // (editing the definition would change every insert)
+                        CollectTexts(tr, definition, texts, null,
+                                     $" in block \"{definition.Name}\"",
+                                     id.Handle.ToString(), depth + 1);
+                    }
+                    break;
+            }
+        }
+    }
+
+    public static Snapshot BuildSnapshot(Database db, string docName, JsonObject rules,
+                                         bool includeModelSpace = true)
     {
         var paramMap = (rules["revit"] as JsonObject)?["paramMap"] as JsonObject;
         var fieldRules = RulesStore.EnabledRules(rules, "titleBlock", "revision").ToList();
@@ -63,27 +140,7 @@ public static class Adapter
             var texts = new List<TextItem>();
             var attributes = new Dictionary<string, string>();
             var btr = (BlockTableRecord)tr.GetObject(layout.BlockTableRecordId, OpenMode.ForRead);
-            foreach (ObjectId id in btr)
-            {
-                switch (tr.GetObject(id, OpenMode.ForRead))
-                {
-                    case DBText text when !string.IsNullOrWhiteSpace(text.TextString):
-                        texts.Add(new TextItem { Handle = id.Handle.ToString(), Text = text.TextString.Trim() });
-                        break;
-                    case MText mtext when !string.IsNullOrWhiteSpace(mtext.Text):
-                        // MText.Text is the plain text with inline codes stripped
-                        texts.Add(new TextItem { Handle = id.Handle.ToString(), Text = mtext.Text.Trim() });
-                        break;
-                    case BlockReference reference:
-                        foreach (ObjectId attId in reference.AttributeCollection)
-                        {
-                            if (tr.GetObject(attId, OpenMode.ForRead) is AttributeReference attribute
-                                && !string.IsNullOrEmpty(attribute.Tag))
-                                attributes.TryAdd(attribute.Tag, attribute.TextString);
-                        }
-                        break;
-                }
-            }
+            CollectTexts(tr, btr, texts, attributes, "", null, 0);
 
             var number = layout.LayoutName;
             if (dwgRule != null)
@@ -119,6 +176,22 @@ public static class Adapter
 
             snapshot.Sheets.Add(sheet);
         }
+
+        if (includeModelSpace)
+        {
+            var blockTable = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+            var modelBtr = (BlockTableRecord)tr.GetObject(
+                blockTable[BlockTableRecord.ModelSpace], OpenMode.ForRead);
+            var modelTexts = new List<TextItem>();
+            CollectTexts(tr, modelBtr, modelTexts, null, "", null, 0);
+            if (modelTexts.Count > 0)
+                snapshot.Sheets.Add(new SheetData
+                {
+                    LayoutName = "Model", Number = "Model", Name = "Model",
+                    IsModelSpace = true, TextNotes = modelTexts,
+                });
+        }
+
         tr.Commit();
         return snapshot;
     }

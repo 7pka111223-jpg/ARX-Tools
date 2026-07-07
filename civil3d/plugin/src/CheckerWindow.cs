@@ -41,7 +41,7 @@ public class CheckerWindow
     private readonly TextBlock _summary, _hint, _rulesPathText, _testResult, _findSummary;
     private readonly TextBox _projectName, _projectNumber, _client, _sheetPattern, _customWords;
     private readonly TextBox _example, _variableParts, _generatedPattern, _testValue, _findBox, _replaceBox;
-    private readonly CheckBox _matchCase;
+    private readonly CheckBox _matchCase, _includeModel;
 
     public CheckerWindow(Document doc, string rulesPath, JsonObject rules)
     {
@@ -77,6 +77,9 @@ public class CheckerWindow
         _findBox = Find<TextBox>("FindBox");
         _replaceBox = Find<TextBox>("ReplaceBox");
         _matchCase = Find<CheckBox>("MatchCaseCheck");
+        _includeModel = Find<CheckBox>("IncludeModelCheck");
+        _includeModel.IsChecked = AppConfig.Get("include_model") != "false";
+        _includeModel.Click += (_, _) => RunCheck();
 
         Wire("RunCheckBtn", (_, _) => RunCheck());
         Wire("ExportCsvBtn", (_, _) => ExportCsv());
@@ -138,7 +141,9 @@ public class CheckerWindow
 
     private void RunCheck() => Guard(() =>
     {
-        _snapshot = Adapter.BuildSnapshot(_doc.Database, _doc.Name, _rules);
+        var includeModel = _includeModel.IsChecked == true;
+        AppConfig.Set("include_model", includeModel ? "true" : "false");
+        _snapshot = Adapter.BuildSnapshot(_doc.Database, _doc.Name, _rules, includeModel);
         var issues = RulesEngine.Evaluate(_snapshot, _rules);
         issues.AddRange(SpellChecker.Check(
             RulesEngine.CollectTextEntries(_snapshot), Wordlist.Words(),

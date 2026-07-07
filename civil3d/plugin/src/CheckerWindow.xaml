@@ -16,7 +16,9 @@
           <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,8">
             <Button x:Name="RunCheckBtn" Content="Re-run Check" Width="110" Margin="0,0,8,0"/>
             <Button x:Name="ExportCsvBtn" Content="Export CSV..." Width="110" Margin="0,0,8,0"/>
-            <Button x:Name="ExportPdfBtn" Content="Export Annotated PDF..." Width="170" Margin="0,0,16,0"/>
+            <Button x:Name="ExportPdfBtn" Content="Export Annotated PDF..." Width="170" Margin="0,0,12,0"/>
+            <CheckBox x:Name="IncludeModelCheck" Content="Include model space text" IsChecked="True"
+                      VerticalAlignment="Center" Margin="0,0,12,0"/>
             <TextBlock x:Name="SummaryText" VerticalAlignment="Center" FontWeight="Bold" Text=""/>
           </StackPanel>
           <DataGrid x:Name="ResultsGrid" Grid.Row="1" AutoGenerateColumns="True"

@@ -26,6 +26,7 @@ public class TextItem
 {
     public string Handle;
     public string Text;
+    public string Context;   // where the text lives; null = plain text note
 }
 
 public class SheetData
@@ -33,6 +34,7 @@ public class SheetData
     public string LayoutName;
     public string Number;
     public string Name;
+    public bool IsModelSpace;   // pseudo-sheet for model space text: text checks only
     public Dictionary<string, string> Params = new();
     public List<string> MissingParams = new();
     public List<TextItem> TextNotes = new();
@@ -264,7 +266,7 @@ public static class RulesEngine
         var issues = new List<Issue>();
         EvaluateProjectRules(snapshot, rules, issues);
         var fieldRules = RulesStore.EnabledRules(rules, "titleBlock", "revision").ToList();
-        foreach (var sheet in snapshot.Sheets)
+        foreach (var sheet in snapshot.Sheets.Where(s => !s.IsModelSpace))
             EvaluateFieldRules(sheet, fieldRules, issues);
         EvaluateNamingRules(snapshot, rules["revit"] as JsonObject, issues);
         var entries = CollectTextEntries(snapshot).Concat(CollectParamEntries(snapshot)).ToList();
@@ -350,7 +352,7 @@ public static class RulesEngine
         Regex regex;
         try { regex = new Regex(pattern); }
         catch (Exception err) { issues.Add(BadPattern("sheetName", pattern, err)); return; }
-        foreach (var sheet in snapshot.Sheets)
+        foreach (var sheet in snapshot.Sheets.Where(s => !s.IsModelSpace))
         {
             if (sheet.Name != null && !regex.IsMatch(sheet.Name))
                 issues.Add(new Issue
@@ -401,15 +403,16 @@ public static class RulesEngine
         var entries = new List<Entry>();
         foreach (var sheet in snapshot.Sheets)
         {
-            entries.Add(new Entry
-            {
-                Text = sheet.Name, Page = sheet.Number, Context = "sheet name",
-            });
+            if (!sheet.IsModelSpace)
+                entries.Add(new Entry
+                {
+                    Text = sheet.Name, Page = sheet.Number, Context = "sheet name",
+                });
             foreach (var note in sheet.TextNotes)
                 entries.Add(new Entry
                 {
                     Text = note.Text, Page = sheet.Number, Handle = note.Handle,
-                    Context = "text note on sheet",
+                    Context = note.Context ?? "text note on sheet",
                 });
         }
         return entries;
@@ -518,7 +521,11 @@ public static class TextSearch
         var comparison = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
         foreach (var entry in entries)
         {
-            if (entry.Handle == null || entry.Context == null || !entry.Context.StartsWith("text note"))
+            // only directly editable text: notes, leaders, dimension overrides,
+            // table cells — not text inside block definitions (shared by every
+            // insert) and not names/attributes
+            if (entry.Handle == null || entry.Context == null
+                || !entry.Context.StartsWith("text note") || entry.Context.Contains("in block"))
                 continue;
             var text = entry.Text ?? "";
             int count = 0, index = 0;

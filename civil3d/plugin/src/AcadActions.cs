@@ -67,7 +67,7 @@ public static class Actions
         var replacement = replace.Replace("$", "$$");
 
         using var tr = doc.Database.TransactionManager.StartTransaction();
-        foreach (var handleText in handles)
+        foreach (var handleText in handles.Distinct())
         {
             var id = Resolve(doc.Database, handleText);
             if (id == null) { skipped++; continue; }
@@ -87,6 +87,42 @@ public static class Actions
                         if (newContents != mtext.Contents) { mtext.Contents = newContents; changed++; }
                         else skipped++;
                         break;
+                    case MLeader mleader when mleader.ContentType == ContentType.MTextContent:
+                        var leaderText = mleader.MText;
+                        var newLeader = finder.Replace(leaderText.Contents, replacement);
+                        if (newLeader != leaderText.Contents)
+                        {
+                            leaderText.Contents = newLeader;
+                            mleader.MText = leaderText;
+                            changed++;
+                        }
+                        else skipped++;
+                        break;
+                    case Dimension dimension:
+                        var newDim = finder.Replace(dimension.DimensionText ?? "", replacement);
+                        if (newDim != dimension.DimensionText) { dimension.DimensionText = newDim; changed++; }
+                        else skipped++;
+                        break;
+                    case Table table:
+                        bool tableChanged = false;
+                        for (int row = 0; row < table.Rows.Count; row++)
+                            for (int col = 0; col < table.Columns.Count; col++)
+                            {
+                                try
+                                {
+                                    var cell = table.Cells[row, col];
+                                    var updated = finder.Replace(cell.TextString ?? "", replacement);
+                                    if (updated != cell.TextString)
+                                    {
+                                        cell.TextString = updated;
+                                        tableChanged = true;
+                                    }
+                                }
+                                catch { /* merged / non-text cells */ }
+                            }
+                        if (tableChanged) { table.RecomputeTableBlock(true); changed++; }
+                        else skipped++;
+                        break;
                     default:
                         skipped++;
                         break;
@@ -104,8 +140,15 @@ public static class Actions
     // ------------------------------------------------- annotated PDF export
 
     public static (int Sheets, int Markers) ExportAnnotatedPdf(
-        Document doc, Snapshot snapshot, List<Issue> issues, string pdfPath)
+        Document doc, Snapshot fullSnapshot, List<Issue> issues, string pdfPath)
     {
+        // model space is checked but not printed — plot the real layouts only
+        var snapshot = new Snapshot
+        {
+            DocTitle = fullSnapshot.DocTitle,
+            ProjectInfo = fullSnapshot.ProjectInfo,
+            Sheets = fullSnapshot.Sheets.Where(s => !s.IsModelSpace).ToList(),
+        };
         if (snapshot.Sheets.Count == 0)
             throw new InvalidOperationException("No layouts to export.");
 
