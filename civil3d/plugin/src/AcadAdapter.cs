@@ -43,17 +43,17 @@ public static class Adapter
 
     private static void CollectTexts(Transaction tr, BlockTableRecord btr, List<TextItem> texts,
                                      Dictionary<string, string> attributes, string contextSuffix,
-                                     string overrideHandle, int depth)
+                                     string zoomHandle, int depth)
     {
         foreach (ObjectId id in btr)
         {
-            var handle = overrideHandle ?? id.Handle.ToString();
             void Add(string text, string context)
             {
                 if (!string.IsNullOrWhiteSpace(text))
                     texts.Add(new TextItem
                     {
-                        Handle = handle,
+                        Handle = id.Handle.ToString(),
+                        ZoomHandle = zoomHandle,
                         Text = text.Trim(),
                         Context = context + contextSuffix,
                     });
@@ -90,13 +90,21 @@ public static class Adapter
                         }
                     break;
                 case BlockReference reference:
-                    if (attributes != null)
-                        foreach (ObjectId attId in reference.AttributeCollection)
-                        {
-                            if (tr.GetObject(attId, OpenMode.ForRead) is AttributeReference attribute
-                                && !string.IsNullOrEmpty(attribute.Tag))
-                                attributes.TryAdd(attribute.Tag, attribute.TextString);
-                        }
+                    foreach (ObjectId attId in reference.AttributeCollection)
+                    {
+                        if (tr.GetObject(attId, OpenMode.ForRead) is not AttributeReference attribute
+                            || string.IsNullOrEmpty(attribute.Tag))
+                            continue;
+                        attributes?.TryAdd(attribute.Tag, attribute.TextString);
+                        // attribute values are searchable/replaceable per insert
+                        if (!string.IsNullOrWhiteSpace(attribute.TextString))
+                            texts.Add(new TextItem
+                            {
+                                Handle = attId.Handle.ToString(),
+                                Text = attribute.TextString.Trim(),
+                                Context = $"attribute \"{attribute.Tag}\"" + contextSuffix,
+                            });
+                    }
                     if (depth < MaxBlockDepth
                         && tr.GetObject(reference.BlockTableRecord, OpenMode.ForRead)
                             is BlockTableRecord definition

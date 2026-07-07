@@ -75,6 +75,11 @@ public static class Actions
             {
                 switch (tr.GetObject(id.Value, OpenMode.ForWrite))
                 {
+                    case AttributeReference attribute:
+                        var newAttr = finder.Replace(attribute.TextString, replacement);
+                        if (newAttr != attribute.TextString) { attribute.TextString = newAttr; changed++; }
+                        else skipped++;
+                        break;
                     case DBText text:
                         var newText = finder.Replace(text.TextString, replacement);
                         if (newText != text.TextString) { text.TextString = newText; changed++; }
@@ -134,6 +139,11 @@ public static class Actions
             }
         }
         tr.Commit();
+        if (changed > 0)
+        {
+            try { doc.Editor.Regen(); }  // block-definition edits need a regen to show
+            catch { }
+        }
         return (changed, skipped);
     }
 
@@ -155,7 +165,7 @@ public static class Actions
         var noteLayouts = new Dictionary<string, string>();
         foreach (var sheet in snapshot.Sheets)
             foreach (var note in sheet.TextNotes)
-                noteLayouts.TryAdd(note.Handle, sheet.LayoutName);
+                noteLayouts.TryAdd(note.ZoomHandle ?? note.Handle, sheet.LayoutName);
 
         var byEntity = new Dictionary<string, List<Issue>>();
         var bySheet = new Dictionary<string, List<Issue>>();

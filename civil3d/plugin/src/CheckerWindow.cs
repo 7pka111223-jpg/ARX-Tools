@@ -522,10 +522,11 @@ public class CheckerWindow
     {
         _matches = matches;
         var table = new DataTable();
-        foreach (var column in new[] { "Sheet", "Matches", "Text", "Id" })
+        foreach (var column in new[] { "Sheet", "Where", "Matches", "Text", "Id" })
             table.Columns.Add(column);
         foreach (var (entry, count) in matches)
-            table.Rows.Add(entry.Page ?? "", count.ToString(), entry.Text ?? "", entry.Handle ?? "");
+            table.Rows.Add(entry.Page ?? "", entry.Context ?? "", count.ToString(),
+                           entry.Text ?? "", entry.Handle ?? "");
         _findGrid.ItemsSource = table.DefaultView;
         _findSummary.Text = $"{matches.Sum(m => m.Count)} occurrence(s) in {matches.Count} text object(s).";
     }
@@ -556,6 +557,11 @@ public class CheckerWindow
         var total = matches.Sum(m => m.Count);
         var question = $"Replace {total} occurrence(s) of \"{_findBox.Text}\" with " +
                        $"\"{_replaceBox.Text}\" in {matches.Count} text object(s)?";
+        var inBlockDefinitions = matches.Count(m => m.Entry.Context.Contains("in block"));
+        if (inBlockDefinitions > 0)
+            question += $"\n\nWARNING: {inBlockDefinitions} of them are inside block definitions " +
+                        "(e.g. the title block) — replacing those updates EVERY insert of the " +
+                        "block, on every layout that uses it.";
         if (MessageBox.Show(Win, question, "ARX Drawing Checker", MessageBoxButton.YesNo,
                             MessageBoxImage.Question) != MessageBoxResult.Yes)
             return;
@@ -580,7 +586,10 @@ public class CheckerWindow
         }
         var handle = row["Id"] as string;
         var page = row["Sheet"] as string;
-        if (!string.IsNullOrEmpty(handle))
-            Actions.ZoomTo(_doc, handle, Adapter.LayoutForPage(_snapshot, page));
+        if (string.IsNullOrEmpty(handle)) return;
+        // for text inside a block definition, zoom to the insert instead
+        var match = _matches.FirstOrDefault(m => m.Entry.Handle == handle);
+        Actions.ZoomTo(_doc, match.Entry?.ZoomTarget ?? handle,
+                       Adapter.LayoutForPage(_snapshot, page));
     });
 }

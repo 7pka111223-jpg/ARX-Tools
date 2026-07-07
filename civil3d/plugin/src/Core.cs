@@ -24,9 +24,10 @@ public class Issue
 
 public class TextItem
 {
-    public string Handle;
+    public string Handle;      // the editable entity (replace target)
+    public string ZoomHandle;  // what to zoom to when different (e.g. block insert)
     public string Text;
-    public string Context;   // where the text lives; null = plain text note
+    public string Context;     // where the text lives; null = plain text note
 }
 
 public class SheetData
@@ -52,7 +53,10 @@ public class Entry
     public string Text;
     public string Page;
     public string Handle;
+    public string ZoomHandle;
     public string Context;
+
+    public string ZoomTarget => ZoomHandle ?? Handle;
 }
 
 public static class Data
@@ -242,7 +246,7 @@ public static class SpellChecker
                 issues.Add(new Issue
                 {
                     Category = "spelling", Severity = "warn", RuleId = "spelling",
-                    FoundText = display, Page = entry.Page, ElementId = entry.Handle,
+                    FoundText = display, Page = entry.Page, ElementId = entry.ZoomTarget,
                     Message = message,
                 });
             }
@@ -269,8 +273,10 @@ public static class RulesEngine
         foreach (var sheet in snapshot.Sheets.Where(s => !s.IsModelSpace))
             EvaluateFieldRules(sheet, fieldRules, issues);
         EvaluateNamingRules(snapshot, rules["revit"] as JsonObject, issues);
-        var entries = CollectTextEntries(snapshot).Concat(CollectParamEntries(snapshot)).ToList();
-        EvaluateFormattingRules(entries, RulesStore.EnabledRules(rules, "formatting"), issues);
+        // attribute values are text entries themselves, so formatting rules
+        // see the title block without a separate params pass
+        EvaluateFormattingRules(CollectTextEntries(snapshot),
+                                RulesStore.EnabledRules(rules, "formatting"), issues);
         return issues;
     }
 
@@ -391,7 +397,7 @@ public static class RulesEngine
                             Category = "formatting",
                             Severity = RulesStore.Str(rule, "severity") ?? "warn",
                             RuleId = ruleId, FoundText = match.Value, Page = entry.Page,
-                            ElementId = entry.Handle, Message = RulesStore.Str(rule, "message"),
+                            ElementId = entry.ZoomTarget, Message = RulesStore.Str(rule, "message"),
                         });
                 }
             }
@@ -412,23 +418,10 @@ public static class RulesEngine
                 entries.Add(new Entry
                 {
                     Text = note.Text, Page = sheet.Number, Handle = note.Handle,
+                    ZoomHandle = note.ZoomHandle,
                     Context = note.Context ?? "text note on sheet",
                 });
         }
-        return entries;
-    }
-
-    public static List<Entry> CollectParamEntries(Snapshot snapshot)
-    {
-        var entries = new List<Entry>();
-        foreach (var sheet in snapshot.Sheets)
-            foreach (var pair in sheet.Params.OrderBy(p => p.Key))
-                if (pair.Value != null)
-                    entries.Add(new Entry
-                    {
-                        Text = pair.Value, Page = sheet.Number,
-                        Context = $"sheet parameter \"{pair.Key}\"",
-                    });
         return entries;
     }
 }
@@ -521,11 +514,11 @@ public static class TextSearch
         var comparison = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
         foreach (var entry in entries)
         {
-            // only directly editable text: notes, leaders, dimension overrides,
-            // table cells — not text inside block definitions (shared by every
-            // insert) and not names/attributes
+            // editable text: notes, leaders, dimension overrides, table cells,
+            // block attribute values, and text inside block definitions (the
+            // UI warns that definition edits affect every insert)
             if (entry.Handle == null || entry.Context == null
-                || !entry.Context.StartsWith("text note") || entry.Context.Contains("in block"))
+                || !(entry.Context.StartsWith("text note") || entry.Context.StartsWith("attribute")))
                 continue;
             var text = entry.Text ?? "";
             int count = 0, index = 0;

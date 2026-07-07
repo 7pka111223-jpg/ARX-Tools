@@ -50,7 +50,13 @@ var snapshot = new Snapshot
             LayoutName = "C-101", Number = "A101", Name = "Ground floor plan",
             Params = new() { ["rev"] = "B", ["date"] = "07/01/2026", ["drawnBy"] = "AH", ["checkedBy"] = "" },
             MissingParams = { "approvedBy" },
-            TextNotes = { new TextItem { Handle = "A1", Text = "ISSUED 12/31/2025" } },
+            TextNotes =
+            {
+                new TextItem { Handle = "A1", Text = "ISSUED 12/31/2025" },
+                new TextItem { Handle = "A9", Text = "07/01/2026", Context = "attribute \"DATE\"" },
+                new TextItem { Handle = "A5", ZoomHandle = "B7", Text = "STANDARD DETALE NOTE",
+                               Context = "text note in block \"TITLE\"" },
+            },
         },
     },
 };
@@ -67,7 +73,17 @@ Check(ByRule("approvedBy").Count == 1 && ByRule("approvedBy")[0].Severity == "wa
       "missing attribute is a warn");
 Check(ByRule("sheetName").Count == 1, "layout naming rule");
 Check(ByRule("isoDate").Select(i => i.FoundText).OrderBy(x => x)
-      .SequenceEqual(new[] { "07/01/2026", "12/31/2025" }), "isoDate in param and text");
+      .SequenceEqual(new[] { "07/01/2026", "12/31/2025" }), "isoDate in attribute and text");
+var blockEntries = RulesEngine.CollectTextEntries(snapshot);
+var snapshotSpell = SpellChecker.Check(blockEntries, words, null, Wordlist.Abbreviations());
+Check(snapshotSpell.Any(i => i.FoundText == "DETALE" && i.ElementId == "B7"),
+      "block text spelling issue zooms to the insert");
+
+// attribute + block-definition entries are replaceable in find & replace
+Check(TextSearch.FindMatches(blockEntries, "07/01/2026", false).Count == 1, "attribute searchable");
+var blockMatch = TextSearch.FindMatches(blockEntries, "DETALE NOTE", false);
+Check(blockMatch.Count == 1 && blockMatch[0].Entry.Handle == "A5"
+      && blockMatch[0].Entry.ZoomTarget == "B7", "block text searchable with real handle");
 
 // ---- pattern builder ----
 var pattern = PatternBuilder.FromExample("AA-001", "001");
