@@ -100,6 +100,21 @@ Check(TextSearch.ReplaceText("DETALE and detale", "detale", "DETAIL", false) == 
       "case-insensitive replace");
 Check(TextSearch.ReplaceText("x", "x", "a$b", false) == "a$b", "dollar literal in replacement");
 
+// ---- batch transform (multiple find/replace pairs applied in order) ----
+var batch = TextSearch.BuildTransform(new[]
+{
+    ("DETALE", "DETAIL"),
+    ("REFER", "SEE"),
+    ("12/31/2025", "2025-12-31"),
+}, matchCase: false);
+Check(batch("REFER TO DETALE 5") == "SEE TO DETAIL 5", "batch applies all pairs");
+Check(batch("ISSUED 12/31/2025") == "ISSUED 2025-12-31", "batch third pair");
+Check(batch("nothing here") == "nothing here", "batch leaves non-matches alone");
+var emptyBatch = TextSearch.BuildTransform(new[] { ("", "X"), ("GALV", "GALVANISED") }, false);
+Check(emptyBatch("GALV UPSTAND") == "GALVANISED UPSTAND", "batch skips empty find terms");
+var caseBatch = TextSearch.BuildTransform(new[] { ("detale", "DETAIL") }, matchCase: true);
+Check(caseBatch("DETALE and detale") == "DETALE and DETAIL", "batch respects match case");
+
 // ---- csv ----
 var results = Report.BuildResults(snapshot, issues);
 var csv = Report.GenerateCsv(results);

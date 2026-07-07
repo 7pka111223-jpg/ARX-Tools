@@ -154,37 +154,73 @@
       </TabItem>
 
       <TabItem Header="Find &amp; Replace">
-        <Grid Margin="8">
-          <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-          </Grid.RowDefinitions>
-          <Grid Grid.Row="0" Margin="0,0,0,8">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="Auto"/>
-              <ColumnDefinition Width="*"/>
-              <ColumnDefinition Width="Auto"/>
-              <ColumnDefinition Width="*"/>
-              <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <TextBlock Text="Find:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-            <TextBox x:Name="FindBox" Grid.Column="1" Margin="0,0,12,0" VerticalAlignment="Center"/>
-            <TextBlock Text="Replace with:" Grid.Column="2" VerticalAlignment="Center" Margin="0,0,6,0"/>
-            <TextBox x:Name="ReplaceBox" Grid.Column="3" Margin="0,0,12,0" VerticalAlignment="Center"/>
-            <CheckBox x:Name="MatchCaseCheck" Grid.Column="4" Content="Match case" VerticalAlignment="Center"/>
-          </Grid>
-          <DataGrid x:Name="FindGrid" Grid.Row="1" AutoGenerateColumns="True"
-                    IsReadOnly="True" SelectionMode="Single" HeadersVisibility="Column"
-                    GridLinesVisibility="Horizontal" CanUserAddRows="False"/>
-          <StackPanel Orientation="Horizontal" Grid.Row="2" Margin="0,8,0,0">
-            <Button x:Name="FindAllBtn" Content="Find All" Width="100" Margin="0,0,8,0"/>
-            <Button x:Name="ReplaceAllBtn" Content="Replace All" Width="110" Margin="0,0,8,0"/>
-            <Button x:Name="ZoomMatchBtn" Content="Zoom to Match" Width="130" Margin="0,0,16,0"/>
-            <TextBlock x:Name="FindSummaryText" VerticalAlignment="Center" Foreground="Gray"
-                       Text="Searches the TEXT/MTEXT objects on all layouts."/>
-          </StackPanel>
-        </Grid>
+        <TabControl Margin="4">
+
+          <TabItem Header="Single">
+            <Grid Margin="8">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+              </Grid.RowDefinitions>
+              <Grid Grid.Row="0" Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Find:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <TextBox x:Name="FindBox" Grid.Column="1" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                <TextBlock Text="Replace with:" Grid.Column="2" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <TextBox x:Name="ReplaceBox" Grid.Column="3" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                <CheckBox x:Name="MatchCaseCheck" Grid.Column="4" Content="Match case" VerticalAlignment="Center"/>
+              </Grid>
+              <DataGrid x:Name="FindGrid" Grid.Row="1" AutoGenerateColumns="True"
+                        IsReadOnly="True" SelectionMode="Single" HeadersVisibility="Column"
+                        GridLinesVisibility="Horizontal" CanUserAddRows="False"/>
+              <StackPanel Orientation="Horizontal" Grid.Row="2" Margin="0,8,0,0">
+                <Button x:Name="FindAllBtn" Content="Find All" Width="100" Margin="0,0,8,0"/>
+                <Button x:Name="ReplaceAllBtn" Content="Replace All" Width="110" Margin="0,0,8,0"/>
+                <Button x:Name="ZoomMatchBtn" Content="Zoom to Match" Width="130" Margin="0,0,16,0"/>
+                <TextBlock x:Name="FindSummaryText" VerticalAlignment="Center" Foreground="Gray"
+                           Text="Searches the TEXT/MTEXT objects on all layouts."/>
+              </StackPanel>
+            </Grid>
+          </TabItem>
+
+          <TabItem Header="Multiple (batch)">
+            <Grid Margin="8">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+              </Grid.RowDefinitions>
+              <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,6">
+                <TextBlock Foreground="Gray" VerticalAlignment="Center" TextWrapping="Wrap"
+                           Text="Enter every Find / Replace pair below (type in the empty bottom row to add more). All pairs are applied together in one operation — one Ctrl+Z (U) undoes the whole batch."/>
+              </StackPanel>
+              <DataGrid x:Name="BatchGrid" Grid.Row="1" AutoGenerateColumns="False"
+                        CanUserAddRows="True" CanUserDeleteRows="True" HeadersVisibility="Column"
+                        GridLinesVisibility="All" SelectionMode="Single">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="Find" Binding="{Binding Find}" Width="*"/>
+                  <DataGridTextColumn Header="Replace with" Binding="{Binding Replace}" Width="*"/>
+                </DataGrid.Columns>
+              </DataGrid>
+              <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
+                <Button x:Name="BatchReplaceBtn" Content="Replace All Pairs" Width="140" Margin="0,0,8,0"/>
+                <Button x:Name="BatchClearBtn" Content="Clear Rows" Width="100" Margin="0,0,8,0"/>
+                <Button x:Name="BatchImportBtn" Content="Import Pairs (CSV)..." Width="150" Margin="0,0,8,0"/>
+                <Button x:Name="BatchExportBtn" Content="Export Pairs (CSV)..." Width="150" Margin="0,0,16,0"/>
+                <CheckBox x:Name="BatchMatchCaseCheck" Content="Match case" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                <TextBlock x:Name="BatchSummaryText" VerticalAlignment="Center" Foreground="Gray" Text=""/>
+              </StackPanel>
+            </Grid>
+          </TabItem>
+
+        </TabControl>
       </TabItem>
 
     </TabControl>

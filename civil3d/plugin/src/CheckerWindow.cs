@@ -38,10 +38,12 @@ public class CheckerWindow
     // named controls
     private readonly TabControl _tabs;
     private readonly DataGrid _resultsGrid, _rulesGrid, _findGrid;
-    private readonly TextBlock _summary, _hint, _rulesPathText, _testResult, _findSummary;
+    private readonly TextBlock _summary, _hint, _rulesPathText, _testResult, _findSummary, _batchSummary;
     private readonly TextBox _projectName, _projectNumber, _client, _sheetPattern, _customWords;
     private readonly TextBox _example, _variableParts, _generatedPattern, _testValue, _findBox, _replaceBox;
-    private readonly CheckBox _matchCase, _includeModel;
+    private readonly CheckBox _matchCase, _includeModel, _batchMatchCase;
+    private readonly DataGrid _batchGrid;
+    private readonly System.Collections.ObjectModel.ObservableCollection<ReplacePair> _batchPairs = new();
 
     public CheckerWindow(Document doc, string rulesPath, JsonObject rules)
     {
@@ -80,6 +82,11 @@ public class CheckerWindow
         _includeModel = Find<CheckBox>("IncludeModelCheck");
         _includeModel.IsChecked = AppConfig.Get("include_model") != "false";
         _includeModel.Click += (_, _) => RunCheck();
+        _batchSummary = Find<TextBlock>("BatchSummaryText");
+        _batchMatchCase = Find<CheckBox>("BatchMatchCaseCheck");
+        _batchGrid = Find<DataGrid>("BatchGrid");
+        LoadBatchPairs();
+        _batchGrid.ItemsSource = _batchPairs;
 
         Wire("RunCheckBtn", (_, _) => RunCheck());
         Wire("ExportCsvBtn", (_, _) => ExportCsv());
@@ -101,6 +108,10 @@ public class CheckerWindow
         Wire("FindAllBtn", (_, _) => FindAll());
         Wire("ReplaceAllBtn", (_, _) => ReplaceAll());
         Wire("ZoomMatchBtn", (_, _) => ZoomMatch());
+        Wire("BatchReplaceBtn", (_, _) => BatchReplace());
+        Wire("BatchClearBtn", (_, _) => { _batchPairs.Clear(); SaveBatchPairs(); });
+        Wire("BatchImportBtn", (_, _) => ImportBatchPairs());
+        Wire("BatchExportBtn", (_, _) => ExportBatchPairs());
         _resultsGrid.MouseDoubleClick += (_, _) => ZoomSelected();
         _findGrid.MouseDoubleClick += (_, _) => ZoomMatch();
 
@@ -592,4 +603,159 @@ public class CheckerWindow
         Actions.ZoomTo(_doc, match.Entry?.ZoomTarget ?? handle,
                        Adapter.LayoutForPage(_snapshot, page));
     });
+
+    // ---------------------------------------------------- batch find/replace
+
+    private List<(string Find, string Replace)> BatchPairsList() =>
+        _batchPairs
+            .Where(p => !string.IsNullOrEmpty(p.Find))
+            .Select(p => (p.Find, p.Replace ?? ""))
+            .ToList();
+
+    private void BatchReplace() => Guard(() =>
+    {
+        _batchGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+        _batchGrid.CommitEdit(DataGridEditingUnit.Row, true);
+        SaveBatchPairs();
+
+        var pairs = BatchPairsList();
+        if (pairs.Count == 0)
+        {
+            Info("Add at least one Find / Replace pair first.");
+            return;
+        }
+        if (_snapshot == null) RunCheck();
+
+        // every editable entry changed by ANY pair, so the whole batch is a
+        // single transaction / single undo
+        var entries = RulesEngine.CollectTextEntries(_snapshot);
+        var matchCase = _batchMatchCase.IsChecked == true;
+        var affected = new Dictionary<string, Entry>();
+        int totalOccurrences = 0;
+        foreach (var (find, _) in pairs)
+            foreach (var (entry, count) in Core.TextSearch.FindMatches(entries, find, matchCase))
+            {
+                affected[entry.Handle] = entry;
+                totalOccurrences += count;
+            }
+        if (affected.Count == 0)
+        {
+            Info("None of the Find terms were found in the drawing.");
+            return;
+        }
+
+        var question = $"Apply {pairs.Count} replacement pair(s) — {totalOccurrences} occurrence(s) " +
+                       $"across {affected.Count} text object(s)?";
+        var inBlockDefinitions = affected.Values.Count(e => e.Context.Contains("in block"));
+        if (inBlockDefinitions > 0)
+            question += $"\n\nWARNING: {inBlockDefinitions} of them are inside block definitions " +
+                        "(e.g. the title block) — replacing those updates EVERY insert of the " +
+                        "block, on every layout that uses it.";
+        if (MessageBox.Show(Win, question, "ARX Drawing Checker", MessageBoxButton.YesNo,
+                            MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+
+        var (changed, _) = Actions.BatchReplace(_doc, affected.Keys, pairs, matchCase);
+        RunCheck();
+        _batchSummary.Text = $"Applied {pairs.Count} pair(s); updated {changed} text object(s).";
+        Info($"Updated {changed} text object(s) using {pairs.Count} replacement pair(s).");
+    });
+
+    private void LoadBatchPairs()
+    {
+        _batchPairs.Clear();
+        var stored = AppConfig.Get("batch_pairs");
+        if (string.IsNullOrEmpty(stored)) return;
+        try
+        {
+            if (JsonNode.Parse(stored) is JsonArray array)
+                foreach (var item in array)
+                    _batchPairs.Add(new ReplacePair
+                    {
+                        Find = RulesStore.Str(item, "find") ?? "",
+                        Replace = RulesStore.Str(item, "replace") ?? "",
+                    });
+        }
+        catch { /* ignore a corrupt stored list */ }
+    }
+
+    private void SaveBatchPairs()
+    {
+        var array = new JsonArray();
+        foreach (var pair in _batchPairs)
+            if (!string.IsNullOrEmpty(pair.Find))
+                array.Add(new JsonObject { ["find"] = pair.Find, ["replace"] = pair.Replace ?? "" });
+        AppConfig.Set("batch_pairs", array.ToJsonString());
+    }
+
+    private void ImportBatchPairs() => Guard(() =>
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "CSV file (*.csv)|*.csv" };
+        if (dialog.ShowDialog(Win) != true) return;
+        int added = 0;
+        foreach (var line in File.ReadAllLines(dialog.FileName, Encoding.UTF8))
+        {
+            var cells = ParseCsvLine(line);
+            if (cells.Count == 0 || string.IsNullOrWhiteSpace(cells[0])) continue;
+            var find = cells[0];
+            // skip an obvious header row
+            if (added == 0 && find.Trim().Equals("find", StringComparison.OrdinalIgnoreCase))
+                continue;
+            _batchPairs.Add(new ReplacePair { Find = find, Replace = cells.Count > 1 ? cells[1] : "" });
+            added++;
+        }
+        SaveBatchPairs();
+        Info($"Imported {added} pair(s).");
+    });
+
+    private void ExportBatchPairs() => Guard(() =>
+    {
+        _batchGrid.CommitEdit(DataGridEditingUnit.Row, true);
+        var path = AskSavePath("csv", "find-replace-pairs", "CSV file");
+        if (path == null) return;
+        var lines = new List<string> { "find,replace" };
+        foreach (var pair in _batchPairs)
+            if (!string.IsNullOrEmpty(pair.Find))
+                lines.Add(Report.CsvField(pair.Find) + "," + Report.CsvField(pair.Replace ?? ""));
+        File.WriteAllText(path, string.Join("\n", lines), new UTF8Encoding(true));
+        Info($"Exported {lines.Count - 1} pair(s) to:\n{path}");
+    });
+
+    private static List<string> ParseCsvLine(string line)
+    {
+        var cells = new List<string>();
+        if (line == null) return cells;
+        int i = 0;
+        var cell = new System.Text.StringBuilder();
+        bool quoted = false;
+        while (i < line.Length)
+        {
+            char c = line[i];
+            if (quoted)
+            {
+                if (c == '"' && i + 1 < line.Length && line[i + 1] == '"') { cell.Append('"'); i += 2; continue; }
+                if (c == '"') { quoted = false; i++; continue; }
+                cell.Append(c); i++;
+            }
+            else
+            {
+                if (c == '"') { quoted = true; i++; continue; }
+                if (c == ',') { cells.Add(cell.ToString()); cell.Clear(); i++; continue; }
+                cell.Append(c); i++;
+            }
+        }
+        cells.Add(cell.ToString());
+        // undo the leading-apostrophe CSV-injection guard on read
+        for (int k = 0; k < cells.Count; k++)
+            if (cells[k].StartsWith("'") && cells[k].Length > 1
+                && "=+-@\t".IndexOf(cells[k][1]) >= 0)
+                cells[k] = cells[k].Substring(1);
+        return cells;
+    }
+}
+
+public class ReplacePair
+{
+    public string Find { get; set; } = "";
+    public string Replace { get; set; } = "";
 }

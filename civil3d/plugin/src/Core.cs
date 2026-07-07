@@ -535,6 +535,28 @@ public static class TextSearch
     public static string ReplaceText(string text, string find, string replace, bool matchCase) =>
         Regex.Replace(text ?? "", Regex.Escape(find), replace.Replace("$", "$$"),
                       matchCase ? RegexOptions.None : RegexOptions.IgnoreCase);
+
+    /// One text transform applying every (find, replace) pair in order —
+    /// batch replace runs this once per entity so the whole batch is a
+    /// single model operation.
+    public static Func<string, string> BuildTransform(
+        IEnumerable<(string Find, string Replace)> pairs, bool matchCase)
+    {
+        var compiled = pairs
+            .Where(p => !string.IsNullOrEmpty(p.Find))
+            .Select(p => (
+                Finder: new Regex(Regex.Escape(p.Find),
+                                  matchCase ? RegexOptions.None : RegexOptions.IgnoreCase),
+                Replacement: (p.Replace ?? "").Replace("$", "$$")))
+            .ToList();
+        return text =>
+        {
+            if (text == null) return null;
+            foreach (var (finder, replacement) in compiled)
+                text = finder.Replace(text, replacement);
+            return text;
+        };
+    }
 }
 
 public class DrawingResult

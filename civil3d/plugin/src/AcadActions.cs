@@ -60,11 +60,18 @@ public static class Actions
 
     public static (int Changed, int Skipped) ReplaceInTexts(
         Document doc, IEnumerable<string> handles, string find, string replace, bool matchCase)
+        => TransformTexts(doc, handles,
+                          TextSearch.BuildTransform(new[] { (find, replace) }, matchCase));
+
+    public static (int Changed, int Skipped) BatchReplace(
+        Document doc, IEnumerable<string> handles,
+        IEnumerable<(string Find, string Replace)> pairs, bool matchCase)
+        => TransformTexts(doc, handles, TextSearch.BuildTransform(pairs, matchCase));
+
+    private static (int Changed, int Skipped) TransformTexts(
+        Document doc, IEnumerable<string> handles, Func<string, string> transform)
     {
         int changed = 0, skipped = 0;
-        var options = matchCase ? RegexOptions.None : RegexOptions.IgnoreCase;
-        var finder = new Regex(Regex.Escape(find), options);
-        var replacement = replace.Replace("$", "$$");
 
         using var tr = doc.Database.TransactionManager.StartTransaction();
         foreach (var handleText in handles.Distinct())
@@ -76,25 +83,25 @@ public static class Actions
                 switch (tr.GetObject(id.Value, OpenMode.ForWrite))
                 {
                     case AttributeReference attribute:
-                        var newAttr = finder.Replace(attribute.TextString, replacement);
+                        var newAttr = transform(attribute.TextString);
                         if (newAttr != attribute.TextString) { attribute.TextString = newAttr; changed++; }
                         else skipped++;
                         break;
                     case DBText text:
-                        var newText = finder.Replace(text.TextString, replacement);
+                        var newText = transform(text.TextString);
                         if (newText != text.TextString) { text.TextString = newText; changed++; }
                         else skipped++;
                         break;
                     case MText mtext:
                         // replace in raw contents so inline formatting survives;
                         // a match broken up by format codes is skipped, not corrupted
-                        var newContents = finder.Replace(mtext.Contents, replacement);
+                        var newContents = transform(mtext.Contents);
                         if (newContents != mtext.Contents) { mtext.Contents = newContents; changed++; }
                         else skipped++;
                         break;
                     case MLeader mleader when mleader.ContentType == ContentType.MTextContent:
                         var leaderText = mleader.MText;
-                        var newLeader = finder.Replace(leaderText.Contents, replacement);
+                        var newLeader = transform(leaderText.Contents);
                         if (newLeader != leaderText.Contents)
                         {
                             leaderText.Contents = newLeader;
@@ -104,7 +111,7 @@ public static class Actions
                         else skipped++;
                         break;
                     case Dimension dimension:
-                        var newDim = finder.Replace(dimension.DimensionText ?? "", replacement);
+                        var newDim = transform(dimension.DimensionText ?? "");
                         if (newDim != dimension.DimensionText) { dimension.DimensionText = newDim; changed++; }
                         else skipped++;
                         break;
@@ -116,7 +123,7 @@ public static class Actions
                                 try
                                 {
                                     var cell = table.Cells[row, col];
-                                    var updated = finder.Replace(cell.TextString ?? "", replacement);
+                                    var updated = transform(cell.TextString ?? "");
                                     if (updated != cell.TextString)
                                     {
                                         cell.TextString = updated;
