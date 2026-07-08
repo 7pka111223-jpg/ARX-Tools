@@ -87,3 +87,19 @@ Headless smoke tests for the ported core:
 
 The plugin targets AutoCAD.NET 25.x (2025/2026). For 2024 and older use
 the COM-based checker above.
+
+### Batch (multiple drawings)
+
+The plugin's **Batch Files** tab processes many DWGs at once without
+opening them in the editor (each is read as a side database):
+
+- Add individual **files** or a whole **folder** (optionally including
+  subfolders).
+- **Run Checks on All Files → CSV** writes one combined report with a
+  leading `file` column, covering every layout of every drawing (files
+  that fail to open are listed with the error).
+- **Batch Find & Replace on All Files** applies the pairs from the
+  Find & Replace → Multiple (batch) tab to every file. When it runs you
+  choose the save mode: **overwrite in place** or **save edited copies
+  to a folder**. Files with no matches are left untouched. The currently
+  open drawing is skipped (edit it from the Find & Replace tab instead).

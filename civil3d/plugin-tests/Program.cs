@@ -123,5 +123,20 @@ Check(csv.Contains("site.dwg,false,error,project,number"), "csv project row");
 Check(Report.CsvField("=SUM(A1)") == "'=SUM(A1)", "csv injection guard");
 Check(Report.CsvField("a,b") == "\"a,b\"", "csv quoting");
 
+// ---- multi-file check + combined csv ----
+var fullIssues = Checker.Run(snapshot, testRules, Wordlist.Abbreviations());
+Check(fullIssues.Any(i => i.RuleId == "dwgNo") && fullIssues.Any(i => i.RuleId == "spelling"),
+      "Checker.Run does rules + spelling in one pass");
+var multiCsv = Report.GenerateCsvForFiles(new (string, List<DrawingResult>, string)[]
+{
+    ("P:\\job\\site.dwg", Report.BuildResults(snapshot, issues), null),
+    ("P:\\job\\broken.dwg", null, "drawing is corrupt"),
+});
+Check(multiCsv.StartsWith("file,fileName,pass,severity,category,ruleId,page,foundText,message"),
+      "multi-file csv header has file column");
+Check(multiCsv.Contains("site.dwg,site.dwg,false,error,project,number"), "multi-file csv row prefixed with file");
+Check(multiCsv.Contains("broken.dwg,(could not open)") && multiCsv.Contains("drawing is corrupt"),
+      "multi-file csv reports open failures");
+
 Console.WriteLine(failures == 0 ? "ALL CORE SMOKE TESTS PASSED" : $"{failures} FAILURE(S)");
 return failures == 0 ? 0 : 1;

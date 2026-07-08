@@ -223,6 +223,44 @@
         </TabControl>
       </TabItem>
 
+      <TabItem Header="Batch Files">
+        <Grid Margin="8">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="120"/>
+          </Grid.RowDefinitions>
+
+          <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,6">
+            <Button x:Name="AddFilesBtn" Content="Add Files..." Width="100" Margin="0,0,8,0"/>
+            <Button x:Name="AddFolderBtn" Content="Add Folder..." Width="110" Margin="0,0,8,0"/>
+            <CheckBox x:Name="RecurseCheck" Content="Include subfolders" VerticalAlignment="Center" Margin="0,0,16,0"/>
+            <Button x:Name="RemoveFilesBtn" Content="Remove Selected" Width="120" Margin="0,0,8,0"/>
+            <Button x:Name="ClearFilesBtn" Content="Clear" Width="70"/>
+          </StackPanel>
+
+          <ListBox x:Name="BatchFilesList" Grid.Row="1" SelectionMode="Extended"
+                   HorizontalContentAlignment="Stretch"/>
+
+          <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,4">
+            <Button x:Name="BatchCheckBtn" Content="Run Checks on All Files → CSV..." Width="230" Margin="0,0,12,0"/>
+            <CheckBox x:Name="BatchIncludeModelCheck" Content="Include model space text" IsChecked="True" VerticalAlignment="Center"/>
+          </StackPanel>
+
+          <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,0,0,4">
+            <Button x:Name="BatchReplaceFilesBtn" Content="Batch Find &amp; Replace on All Files..." Width="230" Margin="0,0,12,0"/>
+            <TextBlock VerticalAlignment="Center" Foreground="Gray"
+                       Text="Uses the pairs from the Find &amp; Replace → Multiple (batch) tab. You choose save mode when it runs."/>
+          </StackPanel>
+
+          <TextBox x:Name="BatchLog" Grid.Row="4" IsReadOnly="True" FontFamily="Consolas"
+                   VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap"
+                   HorizontalScrollBarVisibility="Auto"/>
+        </Grid>
+      </TabItem>
+
     </TabControl>
   </Grid>
 </Window>

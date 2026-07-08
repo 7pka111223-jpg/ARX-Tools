@@ -10,9 +10,11 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Markup;
+using System.Windows.Threading;
 using Autodesk.AutoCAD.ApplicationServices;
 using ArxChecker.Acad;
 using ArxChecker.Core;
+using ArxChecker.Batch;
 
 namespace ArxChecker.Ui;
 
@@ -41,9 +43,13 @@ public class CheckerWindow
     private readonly TextBlock _summary, _hint, _rulesPathText, _testResult, _findSummary, _batchSummary;
     private readonly TextBox _projectName, _projectNumber, _client, _sheetPattern, _customWords;
     private readonly TextBox _example, _variableParts, _generatedPattern, _testValue, _findBox, _replaceBox;
-    private readonly CheckBox _matchCase, _includeModel, _batchMatchCase;
+    private readonly CheckBox _matchCase, _includeModel, _batchMatchCase, _recurse, _batchIncludeModel;
     private readonly DataGrid _batchGrid;
     private readonly System.Collections.ObjectModel.ObservableCollection<ReplacePair> _batchPairs = new();
+    private readonly ListBox _batchFilesList;
+    private readonly TextBox _batchLog;
+
+    private enum SaveMode { Cancel, InPlace, Copy }
 
     public CheckerWindow(Document doc, string rulesPath, JsonObject rules)
     {
@@ -87,6 +93,10 @@ public class CheckerWindow
         _batchGrid = Find<DataGrid>("BatchGrid");
         LoadBatchPairs();
         _batchGrid.ItemsSource = _batchPairs;
+        _recurse = Find<CheckBox>("RecurseCheck");
+        _batchIncludeModel = Find<CheckBox>("BatchIncludeModelCheck");
+        _batchFilesList = Find<ListBox>("BatchFilesList");
+        _batchLog = Find<TextBox>("BatchLog");
 
         Wire("RunCheckBtn", (_, _) => RunCheck());
         Wire("ExportCsvBtn", (_, _) => ExportCsv());
@@ -112,6 +122,12 @@ public class CheckerWindow
         Wire("BatchClearBtn", (_, _) => { _batchPairs.Clear(); SaveBatchPairs(); });
         Wire("BatchImportBtn", (_, _) => ImportBatchPairs());
         Wire("BatchExportBtn", (_, _) => ExportBatchPairs());
+        Wire("AddFilesBtn", (_, _) => AddFiles());
+        Wire("AddFolderBtn", (_, _) => AddFolder());
+        Wire("RemoveFilesBtn", (_, _) => RemoveSelectedFiles());
+        Wire("ClearFilesBtn", (_, _) => _batchFilesList.Items.Clear());
+        Wire("BatchCheckBtn", (_, _) => BatchCheckFiles());
+        Wire("BatchReplaceFilesBtn", (_, _) => BatchReplaceFiles());
         _resultsGrid.MouseDoubleClick += (_, _) => ZoomSelected();
         _findGrid.MouseDoubleClick += (_, _) => ZoomMatch();
 
@@ -751,6 +767,177 @@ public class CheckerWindow
                 && "=+-@\t".IndexOf(cells[k][1]) >= 0)
                 cells[k] = cells[k].Substring(1);
         return cells;
+    }
+
+    // ------------------------------------------------------- batch files
+
+    private List<string> BatchFilePaths() =>
+        _batchFilesList.Items.Cast<string>().ToList();
+
+    private void AddPaths(IEnumerable<string> paths)
+    {
+        var existing = new HashSet<string>(BatchFilePaths(), StringComparer.OrdinalIgnoreCase);
+        foreach (var path in paths)
+            if (existing.Add(path)) _batchFilesList.Items.Add(path);
+    }
+
+    private void AddFiles() => Guard(() =>
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Filter = "AutoCAD drawings (*.dwg)|*.dwg", Multiselect = true,
+        };
+        if (dialog.ShowDialog(Win) == true) AddPaths(dialog.FileNames);
+    });
+
+    private void AddFolder() => Guard(() =>
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "Choose a folder of drawings" };
+        if (dialog.ShowDialog(Win) != true) return;
+        var found = Files.DwgsInFolder(dialog.FolderName, _recurse.IsChecked == true);
+        AddPaths(found);
+        Log($"Added {found.Count} drawing(s) from {dialog.FolderName}.");
+    });
+
+    private void RemoveSelectedFiles()
+    {
+        foreach (var item in _batchFilesList.SelectedItems.Cast<object>().ToList())
+            _batchFilesList.Items.Remove(item);
+    }
+
+    private void Log(string line)
+    {
+        _batchLog.AppendText(line + "\n");
+        _batchLog.ScrollToEnd();
+        // pump the dispatcher so the log repaints between files
+        _batchLog.Dispatcher.Invoke(() => { }, DispatcherPriority.Render);
+    }
+
+    private string PickFolder(string title)
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog { Title = title };
+        return dialog.ShowDialog(Win) == true ? dialog.FolderName : null;
+    }
+
+    private void BatchCheckFiles() => Guard(() =>
+    {
+        var paths = BatchFilePaths();
+        if (paths.Count == 0) { Info("Add files or a folder first."); return; }
+        var csvPath = AskSavePath("csv", "batch-check-report", "CSV report");
+        if (csvPath == null) return;
+
+        var extra = ExtraWords().ToList();
+        var includeModel = _batchIncludeModel.IsChecked == true;
+        Log($"Checking {paths.Count} file(s)...");
+        var results = Files.CheckFiles(paths, _rules, includeModel, extra,
+                                       p => Log("  " + Path.GetFileName(p)));
+        var csv = Report.GenerateCsvForFiles(
+            results.Select(r => (r.Path, r.Results ?? new List<DrawingResult>(), r.Error)));
+        File.WriteAllText(csvPath, csv, new UTF8Encoding(true));
+
+        int failed = results.Count(r => r.Error != null);
+        int issues = results.Where(r => r.Results != null)
+                            .Sum(r => r.Results.Sum(d => d.Issues.Count));
+        Log($"Done. {paths.Count - failed} checked, {failed} failed, {issues} issue(s) total.");
+        Log($"Report: {csvPath}");
+        Info($"Checked {paths.Count - failed} file(s); {failed} could not be opened.\n" +
+             $"{issues} issue(s) found.\n\nReport saved to:\n{csvPath}");
+    });
+
+    private void BatchReplaceFiles() => Guard(() =>
+    {
+        var paths = BatchFilePaths();
+        if (paths.Count == 0) { Info("Add files or a folder first."); return; }
+
+        _batchGrid.CommitEdit(DataGridEditingUnit.Row, true);
+        SaveBatchPairs();
+        var pairs = BatchPairsList();
+        if (pairs.Count == 0)
+        {
+            Info("Add Find / Replace pairs on the Find & Replace → Multiple (batch) tab first.");
+            return;
+        }
+
+        var activePath = _doc.Name;
+        var skipActive = paths.RemoveAll(p =>
+            string.Equals(p, activePath, StringComparison.OrdinalIgnoreCase)) > 0;
+        if (paths.Count == 0)
+        {
+            Info("The only listed file is the drawing that is currently open. Use the " +
+                 "Find & Replace tab for the open drawing, or add other files.");
+            return;
+        }
+
+        var mode = AskSaveMode(out var outputDir);
+        if (mode == SaveMode.Cancel) return;
+        var inPlace = mode == SaveMode.InPlace;
+
+        var confirm = inPlace
+            ? $"Apply {pairs.Count} pair(s) to {paths.Count} file(s) and OVERWRITE the originals?\n\n" +
+              "This cannot be undone — make sure you have a backup or version control."
+            : $"Apply {pairs.Count} pair(s) to {paths.Count} file(s) and save edited copies to:\n{outputDir}?";
+        if (MessageBox.Show(Win, confirm, "ARX Drawing Checker", MessageBoxButton.YesNo,
+                            inPlace ? MessageBoxImage.Warning : MessageBoxImage.Question)
+            != MessageBoxResult.Yes)
+            return;
+
+        if (skipActive)
+            Log("Note: the currently open drawing was skipped (close it or use the Find & Replace tab).");
+        Log($"Replacing in {paths.Count} file(s) ({(inPlace ? "in place" : "copies → " + outputDir)})...");
+        var results = Files.ReplaceFiles(paths, pairs, _batchMatchCase.IsChecked == true,
+                                         inPlace, outputDir, p => Log("  " + Path.GetFileName(p)));
+        foreach (var r in results)
+            Log(r.Error != null
+                ? $"    ERROR {Path.GetFileName(r.Path)}: {r.Error}"
+                : $"    {Path.GetFileName(r.Path)}: {r.Changed} change(s)" +
+                  (r.SavedTo != null ? $" → {r.SavedTo}" : " (no matches, not saved)"));
+
+        int edited = results.Count(r => r.Changed > 0);
+        int failed = results.Count(r => r.Error != null);
+        Log($"Done. {edited} file(s) edited, {failed} failed.");
+        Info($"{edited} file(s) edited, {failed} failed. See the log for details.");
+    });
+
+    private SaveMode AskSaveMode(out string outputDir)
+    {
+        outputDir = null;
+        var chosen = SaveMode.Cancel;
+        var dialog = new Window
+        {
+            Title = "ARX Drawing Checker — Save mode",
+            SizeToContent = SizeToContent.WidthAndHeight, Owner = Win,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ResizeMode = ResizeMode.NoResize, ShowInTaskbar = false,
+        };
+        var panel = new StackPanel { Margin = new Thickness(16) };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "How should the edited files be saved?",
+            FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 10),
+        });
+        Button MakeButton(string text, SaveMode mode)
+        {
+            var button = new Button
+            {
+                Content = text, Margin = new Thickness(0, 0, 0, 6),
+                Padding = new Thickness(12, 8, 12, 8), HorizontalContentAlignment = HorizontalAlignment.Left,
+            };
+            button.Click += (_, _) => { chosen = mode; dialog.Close(); };
+            return button;
+        }
+        panel.Children.Add(MakeButton("Save edited copies to a folder…", SaveMode.Copy));
+        panel.Children.Add(MakeButton("Overwrite the original files in place", SaveMode.InPlace));
+        panel.Children.Add(MakeButton("Cancel", SaveMode.Cancel));
+        dialog.Content = panel;
+        dialog.ShowDialog();
+
+        if (chosen == SaveMode.Copy)
+        {
+            var folder = PickFolder("Choose the output folder for edited copies");
+            if (folder == null) return SaveMode.Cancel;
+            outputDir = folder;
+        }
+        return chosen;
     }
 }
 

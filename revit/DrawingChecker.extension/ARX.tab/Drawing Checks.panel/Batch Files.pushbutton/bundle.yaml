@@ -1,0 +1,9 @@
+title: Batch Files
+tooltip: >-
+  Run the ARX drawing checks, or a batch find & replace, across MANY
+  Revit files at once. Pick individual .rvt files or a whole folder;
+  the checks produce one combined CSV report, and find & replace
+  applies a list of find/replace pairs to every file (saved in place or
+  as copies to a folder you choose). Files are opened in the background,
+  detached from central. Fully offline.
+author: ARX

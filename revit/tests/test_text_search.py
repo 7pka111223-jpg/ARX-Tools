@@ -4,8 +4,10 @@ import unittest
 from . import _path  # noqa: F401
 from drawingchecker.text_search import (
     build_replacements,
+    build_transform,
     find_matches,
     is_editable_entry,
+    parse_pairs_csv,
     replace_text,
 )
 
@@ -68,5 +70,46 @@ class BuildReplacementsTests(unittest.TestCase):
         self.assertEqual(replacements[1], (2, 'DETAIL AND DETAIL'))
 
 
-if __name__ == '__main__':
+class BuildTransformTests(unittest.TestCase):
+    def test_applies_all_pairs_in_order(self):
+        t = build_transform([('DETALE', 'DETAIL'), ('REFER', 'SEE')])
+        self.assertEqual(t('REFER TO DETALE 5'), 'SEE TO DETAIL 5')
+
+    def test_case_insensitive_by_default(self):
+        t = build_transform([('detale', 'DETAIL')])
+        self.assertEqual(t('DETALE and detale'), 'DETAIL and DETAIL')
+
+    def test_match_case(self):
+        t = build_transform([('detale', 'DETAIL')], match_case=True)
+        self.assertEqual(t('DETALE and detale'), 'DETALE and DETAIL')
+
+    def test_skips_empty_find(self):
+        t = build_transform([('', 'X'), ('GALV', 'GALVANISED')])
+        self.assertEqual(t('GALV UPSTAND'), 'GALVANISED UPSTAND')
+
+    def test_replacement_is_literal(self):
+        t = build_transform([('x', 'a\\1b')])
+        self.assertEqual(t('x'), 'a\\1b')
+
+    def test_none_passthrough(self):
+        self.assertIsNone(build_transform([('a', 'b')])(None))
+
+
+class ParsePairsCsvTests(unittest.TestCase):
+    def test_parses_and_skips_header(self):
+        pairs = parse_pairs_csv('find,replace\nDETALE,DETAIL\nREFER,SEE\n')
+        self.assertEqual(pairs, [('DETALE', 'DETAIL'), ('REFER', 'SEE')])
+
+    def test_quoted_cells_and_blank_rows(self):
+        pairs = parse_pairs_csv('"a,b",c\n\n,skipme\nx,y')
+        self.assertEqual(pairs, [('a,b', 'c'), ('x', 'y')])
+
+    def test_missing_replace_column(self):
+        self.assertEqual(parse_pairs_csv('DELETEME'), [('DELETEME', '')])
+
+    def test_unguards_injection_prefix(self):
+        self.assertEqual(parse_pairs_csv("'=SUM,'+B"), [('=SUM', '+B')])
+
+
+if __name__ == "__main__":
     unittest.main()

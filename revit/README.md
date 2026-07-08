@@ -76,6 +76,24 @@ issues per sheet, errors first; the overall verdict is **FAIL** if any
 error-severity issue exists (spelling and naming issues are warnings and
 never fail a check).
 
+### Batch Files (many models at once)
+
+The **ARX → Batch Files** button processes several Revit models in one
+run, without opening them in the UI (each is opened in the background,
+detached from central):
+
+1. Pick individual `.rvt` files or a folder (optionally with subfolders).
+2. Choose **Check files → combined CSV report**, or **Batch find &
+   replace in files**.
+   - Checks produce one CSV covering every sheet of every model (files
+     that fail to open are listed with the error).
+   - Find & replace takes either one typed find/replace pair or a
+     `find,replace` CSV (the same format the checkers export), applied to
+     every text note. You choose the save mode when it runs: **save
+     edited copies to a folder** (recommended) or **overwrite in place**.
+     Note: workshared central models are saved as detached, non-workshared
+     copies — prefer "save copies" for those.
+
 ### Pointing it at your project rules
 
 The checker looks for its configuration in this order:

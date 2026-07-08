@@ -68,6 +68,57 @@ public static class Actions
         IEnumerable<(string Find, string Replace)> pairs, bool matchCase)
         => TransformTexts(doc, handles, TextSearch.BuildTransform(pairs, matchCase));
 
+    /// Apply the transform to one already-open-for-write text-bearing object.
+    /// Returns null if the object type is not text; otherwise whether it changed.
+    private static bool? ApplyTransformToEntity(DBObject obj, Func<string, string> transform)
+    {
+        switch (obj)
+        {
+            case AttributeReference attribute:
+                var newAttr = transform(attribute.TextString);
+                if (newAttr == attribute.TextString) return false;
+                attribute.TextString = newAttr; return true;
+            case DBText text:
+                var newText = transform(text.TextString);
+                if (newText == text.TextString) return false;
+                text.TextString = newText; return true;
+            case MText mtext:
+                // replace in raw contents so inline formatting survives;
+                // a match broken up by format codes is skipped, not corrupted
+                var newContents = transform(mtext.Contents);
+                if (newContents == mtext.Contents) return false;
+                mtext.Contents = newContents; return true;
+            case MLeader mleader when mleader.ContentType == ContentType.MTextContent:
+                var leaderText = mleader.MText;
+                if (leaderText == null) return false;
+                var newLeader = transform(leaderText.Contents);
+                if (newLeader == leaderText.Contents) return false;
+                leaderText.Contents = newLeader;
+                mleader.MText = leaderText; return true;
+            case Dimension dimension:
+                var newDim = transform(dimension.DimensionText ?? "");
+                if (newDim == dimension.DimensionText) return false;
+                dimension.DimensionText = newDim; return true;
+            case Table table:
+                bool tableChanged = false;
+                for (int row = 0; row < table.Rows.Count; row++)
+                    for (int col = 0; col < table.Columns.Count; col++)
+                    {
+                        try
+                        {
+                            var cell = table.Cells[row, col];
+                            var updated = transform(cell.TextString ?? "");
+                            if (updated != cell.TextString) { cell.TextString = updated; tableChanged = true; }
+                        }
+                        catch { /* merged / non-text cells */ }
+                    }
+                if (!tableChanged) return false;
+                table.RecomputeTableBlock(true); return true;
+            default:
+                return null;
+        }
+    }
+
     private static (int Changed, int Skipped) TransformTexts(
         Document doc, IEnumerable<string> handles, Func<string, string> transform)
     {
@@ -80,65 +131,8 @@ public static class Actions
             if (id == null) { skipped++; continue; }
             try
             {
-                switch (tr.GetObject(id.Value, OpenMode.ForWrite))
-                {
-                    case AttributeReference attribute:
-                        var newAttr = transform(attribute.TextString);
-                        if (newAttr != attribute.TextString) { attribute.TextString = newAttr; changed++; }
-                        else skipped++;
-                        break;
-                    case DBText text:
-                        var newText = transform(text.TextString);
-                        if (newText != text.TextString) { text.TextString = newText; changed++; }
-                        else skipped++;
-                        break;
-                    case MText mtext:
-                        // replace in raw contents so inline formatting survives;
-                        // a match broken up by format codes is skipped, not corrupted
-                        var newContents = transform(mtext.Contents);
-                        if (newContents != mtext.Contents) { mtext.Contents = newContents; changed++; }
-                        else skipped++;
-                        break;
-                    case MLeader mleader when mleader.ContentType == ContentType.MTextContent:
-                        var leaderText = mleader.MText;
-                        var newLeader = transform(leaderText.Contents);
-                        if (newLeader != leaderText.Contents)
-                        {
-                            leaderText.Contents = newLeader;
-                            mleader.MText = leaderText;
-                            changed++;
-                        }
-                        else skipped++;
-                        break;
-                    case Dimension dimension:
-                        var newDim = transform(dimension.DimensionText ?? "");
-                        if (newDim != dimension.DimensionText) { dimension.DimensionText = newDim; changed++; }
-                        else skipped++;
-                        break;
-                    case Table table:
-                        bool tableChanged = false;
-                        for (int row = 0; row < table.Rows.Count; row++)
-                            for (int col = 0; col < table.Columns.Count; col++)
-                            {
-                                try
-                                {
-                                    var cell = table.Cells[row, col];
-                                    var updated = transform(cell.TextString ?? "");
-                                    if (updated != cell.TextString)
-                                    {
-                                        cell.TextString = updated;
-                                        tableChanged = true;
-                                    }
-                                }
-                                catch { /* merged / non-text cells */ }
-                            }
-                        if (tableChanged) { table.RecomputeTableBlock(true); changed++; }
-                        else skipped++;
-                        break;
-                    default:
-                        skipped++;
-                        break;
-                }
+                var result = ApplyTransformToEntity(tr.GetObject(id.Value, OpenMode.ForWrite), transform);
+                if (result == true) changed++; else skipped++;
             }
             catch
             {
@@ -152,6 +146,41 @@ public static class Actions
             catch { }
         }
         return (changed, skipped);
+    }
+
+    /// Batch replace across an entire (possibly closed) Database: walks every
+    /// non-xref block record — model space, all layouts, and block definitions
+    /// (e.g. the title block) — plus block attributes. Used for multi-file
+    /// processing where there is no active Document/Editor.
+    public static int BatchReplaceDatabase(
+        Database db, IEnumerable<(string Find, string Replace)> pairs, bool matchCase)
+    {
+        var transform = TextSearch.BuildTransform(pairs, matchCase);
+        int changed = 0;
+        using var tr = db.TransactionManager.StartTransaction();
+        var blockTable = (BlockTable)tr.GetObject(db.BlockTableId, OpenMode.ForRead);
+        foreach (ObjectId btrId in blockTable)
+        {
+            var btr = (BlockTableRecord)tr.GetObject(btrId, OpenMode.ForRead);
+            if (btr.IsFromExternalReference || btr.IsFromOverlayReference) continue;
+            foreach (ObjectId id in btr)
+            {
+                try
+                {
+                    var obj = tr.GetObject(id, OpenMode.ForWrite);
+                    if (ApplyTransformToEntity(obj, transform) == true) changed++;
+                    if (obj is BlockReference reference)
+                        foreach (ObjectId attId in reference.AttributeCollection)
+                        {
+                            var att = tr.GetObject(attId, OpenMode.ForWrite);
+                            if (ApplyTransformToEntity(att, transform) == true) changed++;
+                        }
+                }
+                catch { /* skip entities that can't be opened/edited */ }
+            }
+        }
+        tr.Commit();
+        return changed;
     }
 
     // ------------------------------------------------- annotated PDF export

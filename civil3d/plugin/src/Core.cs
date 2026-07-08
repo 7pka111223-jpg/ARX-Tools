@@ -603,18 +603,56 @@ public static class Report
     {
         var rows = new List<string> { "fileName,pass,severity,category,ruleId,page,foundText,message" };
         foreach (var drawing in results)
+            AppendDrawingRows(rows, drawing, null);
+        return string.Join("\n", rows);
+    }
+
+    /// One combined CSV across many files, with a leading `file` column.
+    public static string GenerateCsvForFiles(
+        IEnumerable<(string File, List<DrawingResult> Results, string Error)> files)
+    {
+        var rows = new List<string>
+            { "file,fileName,pass,severity,category,ruleId,page,foundText,message" };
+        foreach (var (file, results, error) in files)
         {
-            var pass = drawing.Pass ? "true" : "false";
-            if (drawing.Issues.Count == 0)
-                rows.Add(string.Join(",", new[] { drawing.FileName, pass, "", "", "", "", "", "" }
-                    .Select(CsvField)));
-            foreach (var issue in drawing.Issues)
+            var name = Path.GetFileName(file);
+            if (error != null)
+            {
                 rows.Add(string.Join(",", new[]
-                {
-                    drawing.FileName, pass, issue.Severity, issue.Category, issue.RuleId,
-                    issue.Page ?? "", issue.FoundText ?? "", issue.Message,
-                }.Select(CsvField)));
+                    { name, "(could not open)", "false", "error", "extraction", "openFailed",
+                      "", "", error }.Select(CsvField)));
+                continue;
+            }
+            foreach (var drawing in results)
+                AppendDrawingRows(rows, drawing, name);
         }
         return string.Join("\n", rows);
+    }
+
+    private static void AppendDrawingRows(List<string> rows, DrawingResult drawing, string filePrefix)
+    {
+        string Row(params string[] cells) =>
+            string.Join(",", (filePrefix == null ? cells : cells.Prepend(filePrefix)).Select(CsvField));
+
+        var pass = drawing.Pass ? "true" : "false";
+        if (drawing.Issues.Count == 0)
+            rows.Add(Row(drawing.FileName, pass, "", "", "", "", "", ""));
+        foreach (var issue in drawing.Issues)
+            rows.Add(Row(drawing.FileName, pass, issue.Severity, issue.Category, issue.RuleId,
+                         issue.Page ?? "", issue.FoundText ?? "", issue.Message));
+    }
+}
+
+/// Full check (rules + spelling) over one snapshot — shared by the window
+/// and by multi-file batch processing.
+public static class Checker
+{
+    public static List<Issue> Run(Snapshot snapshot, JsonObject rules, IEnumerable<string> extraWords)
+    {
+        var issues = RulesEngine.Evaluate(snapshot, rules);
+        issues.AddRange(SpellChecker.Check(
+            RulesEngine.CollectTextEntries(snapshot), Wordlist.Words(),
+            rules["spelling"] as JsonObject, extraWords));
+        return issues;
     }
 }
