@@ -1,0 +1,5 @@
+{
+  "format": "arx-license/1",
+  "payload": "{\"email\":\"t@example.com\",\"expires\":\"2020-01-01\",\"graceDays\":7,\"issued\":\"2026-07-11\",\"licenseId\":\"ARX-TEST-0002\",\"licensee\":\"Test Firm Ltd\",\"machineIds\":[\"337D-1DB6-F946-6C08\"],\"plan\":\"pro\",\"product\":\"arx-drawing-checker\",\"seats\":1}",
+  "signature": "ZSYYE3SRW1lKSxC8oCLHKd0+WgBeVJpRscqMWDd8GByJPRdvzr70VkUdrfiHVZ9EU0XKTH8QHVYoD+DN4Xh3boOr3I0XB8o7vnKd9eYARypuliHlD9uj03INs2j3MYak2l45SHhg+s7NZwXqbdmnSzDSqoJTACn4CKnKDfNeaM21n4yQztzD5Ewz1MrnBz7CEzLWx50u+He0Rdjfh81wp8Cz8bwM6KFfrQFOjB4nM+4YRuWy39NSg6NwglH29OVcwsV9Up7riWFMTMSBipPggKzOw8OGxGw38qwXeVLqwNPvL5/JFpIEHvZoTcOIh9SKLHi6yVk33sj1TgD6Gljw2Q=="
+}

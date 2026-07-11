@@ -138,5 +138,55 @@ Check(multiCsv.Contains("site.dwg,site.dwg,false,error,project,number"), "multi-
 Check(multiCsv.Contains("broken.dwg,(could not open)") && multiCsv.Contains("drawing is corrupt"),
       "multi-file csv reports open failures");
 
+// ---- licensing (verifies the SAME fixtures as the Python suite, locking
+// the two implementations together) ----
+var fixturesDir = Environment.GetEnvironmentVariable("ARX_FIXTURES_DIR")
+                  ?? Path.Combine("revit", "tests", "fixtures");
+Check(Licensing.FingerprintFromString("TEST-MACHINE-GUID") == "337D-1DB6-F946-6C08",
+      "fingerprint matches the Python known vector");
+Check(Licensing.FingerprintFromString(" Test-Machine-GUID ") == "337D-1DB6-F946-6C08",
+      "fingerprint normalizes case and whitespace");
+var testMachine = "337D-1DB6-F946-6C08";
+var publicKey = (System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse(
+    File.ReadAllText(Path.Combine(fixturesDir, "license_test_key_public.json")));
+var testModulus = RulesStore.Str(publicKey, "n");
+long Day(string date) => DateTimeOffset.Parse(date + "T12:00:00Z").ToUnixTimeSeconds();
+
+LicenseStatus Lic(string name, string machine = null, long? now = null) =>
+    Licensing.CheckLicense(Path.Combine(fixturesDir, name), now ?? Day("2026-07-11"),
+                           machine ?? testMachine, testModulus, statePath: null);
+
+var unconfigured = Licensing.CheckLicense(modulusHex: "");
+Check(unconfigured.State == "unconfigured" && unconfigured.Allowed, "unconfigured key runs free");
+var valid = Lic("license_valid.lic");
+Check(valid.State == "valid" && valid.Allowed && !valid.Warning, "valid node-locked license");
+Check(RulesStore.Str(valid.Payload, "licensee") == "Test Firm Ltd", "payload readable");
+Check(Lic("license_tampered.lic").State == "invalid", "tampered payload rejected");
+Check(Lic("license_valid.lic", machine: "FFFF-0000-FFFF-0000").State == "wrong_machine",
+      "wrong machine blocked");
+Check(Lic("no_such.lic").State == "missing", "missing license blocked");
+var perpetual = Lic("license_perpetual.lic", machine: "FFFF-0000-FFFF-0000");
+Check(perpetual.State == "valid" && perpetual.DaysLeft == null, "perpetual license any machine");
+var expiring = Lic("license_valid.lic", now: Day("2092-12-25"));
+Check(expiring.State == "valid" && expiring.Warning, "expiring-soon warns");
+var grace = Lic("license_expired.lic", now: Day("2020-01-05"));
+Check(grace.State == "grace" && grace.Allowed && grace.Warning, "grace period after expiry");
+Check(Lic("license_expired.lic", now: Day("2020-02-01")).State == "expired",
+      "expired beyond grace blocked");
+var blockedText = Lic("license_valid.lic", machine: "FFFF-0000-FFFF-0000").Describe();
+Check(blockedText.Contains("FFFF-0000-FFFF-0000"), "describe shows machine id when blocked");
+
+var stateFile = Path.Combine(Path.GetTempPath(), "arx-smoke-" + Guid.NewGuid() + ".json");
+try
+{
+    var fresh = Licensing.CheckLicense(Path.Combine(fixturesDir, "license_valid.lic"),
+        Day("2026-07-11"), testMachine, testModulus, stateFile);
+    Check(fresh.State == "valid", "clock guard first run valid");
+    var rolled = Licensing.CheckLicense(Path.Combine(fixturesDir, "license_valid.lic"),
+        Day("2026-07-01"), testMachine, testModulus, stateFile);
+    Check(rolled.State == "clock" && !rolled.Allowed, "clock rollback blocked");
+}
+finally { File.Delete(stateFile); }
+
 Console.WriteLine(failures == 0 ? "ALL CORE SMOKE TESTS PASSED" : $"{failures} FAILURE(S)");
 return failures == 0 ? 0 : 1;

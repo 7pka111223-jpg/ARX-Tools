@@ -23,7 +23,7 @@ if __package__ in (None, ''):
 from .libpath import add_lib_to_path
 add_lib_to_path()
 
-from drawingchecker import config_locator, rules_store                       # noqa: E402
+from drawingchecker import config_locator, licensing, rules_store            # noqa: E402
 from drawingchecker.pattern_builder import pattern_from_example              # noqa: E402
 from drawingchecker.report_exporter import generate_csv                      # noqa: E402
 from drawingchecker.results_model import build_results                       # noqa: E402
@@ -653,6 +653,15 @@ class CheckerApp:
 
 def main():
     root = tk.Tk()
+    license_status = licensing.check_license()
+    if not license_status['allowed']:
+        root.withdraw()
+        messagebox.showerror('%s — license' % TITLE,
+                             licensing.describe(license_status))
+        return 1
+    if license_status['warning']:
+        messagebox.showwarning('%s — license' % TITLE,
+                               licensing.describe(license_status))
     try:
         CheckerApp(root)
     except RuntimeError as err:

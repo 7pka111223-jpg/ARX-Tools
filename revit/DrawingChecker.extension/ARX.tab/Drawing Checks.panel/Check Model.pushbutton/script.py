@@ -19,7 +19,7 @@ from System.Data import DataTable  # noqa: E402
 
 from pyrevit import forms, revit, script  # noqa: E402
 
-from drawingchecker import config_locator, rules_store  # noqa: E402
+from drawingchecker import config_locator, licensing, rules_store  # noqa: E402
 from drawingchecker.pattern_builder import pattern_from_example  # noqa: E402
 from drawingchecker.report_exporter import generate_csv  # noqa: E402
 from drawingchecker.results_model import build_results  # noqa: E402
@@ -533,6 +533,14 @@ def main():
     uidoc = revit.uidoc
     if uidoc is None or revit.doc is None:
         forms.alert('Open a Revit project first.', exitscript=True)
+
+    license_status = licensing.check_license()
+    if not license_status['allowed']:
+        forms.alert(licensing.describe(license_status),
+                    title='ARX Drawing Checker — license', exitscript=True)
+    if license_status['warning']:
+        forms.alert(licensing.describe(license_status),
+                    title='ARX Drawing Checker — license')
 
     rules_path, rules = load_rules()
     window = CheckerWindow(uidoc, rules_path, rules)

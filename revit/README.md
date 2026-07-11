@@ -133,6 +133,16 @@ The custom dictionary is a plain text file, one word per line, `#` for
 comments — add project names, abbreviations and local terms the spell
 checker should accept.
 
+## Licensing (optional, off by default)
+
+The extension contains an offline licensing gate
+(`lib/drawingchecker/licensing.py`) shared with the Civil 3D tools: one
+signed `%APPDATA%\ARX-Tools\license.lic` covers all ARX checkers on a
+machine, with node-locking, expiry + renewal grace and a clock-rollback
+guard. While no public key is embedded (the default), the gate is
+inactive and the tool runs unrestricted. See `docs/LICENSING.md` for
+key generation and issuing licenses with `tools/license_admin.py`.
+
 ## Development
 
 The extension is split so the Revit API surface stays thin:

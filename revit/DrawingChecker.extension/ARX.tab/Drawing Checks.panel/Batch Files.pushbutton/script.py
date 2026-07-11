@@ -24,7 +24,7 @@ from Autodesk.Revit.DB import (
     Transaction,
 )
 
-from drawingchecker import config_locator, rules_store
+from drawingchecker import config_locator, licensing, rules_store
 from drawingchecker.report_exporter import csv_field
 from drawingchecker.results_model import build_results
 from drawingchecker.revit_adapter import build_snapshot
@@ -265,6 +265,14 @@ def replace_files(paths, rules):
 
 
 def main():
+    license_status = licensing.check_license()
+    if not license_status['allowed']:
+        forms.alert(licensing.describe(license_status),
+                    title='ARX Drawing Checker — license', exitscript=True)
+    if license_status['warning']:
+        forms.alert(licensing.describe(license_status),
+                    title='ARX Drawing Checker — license')
+
     rules = load_rules()
     paths = pick_paths()
     if not paths:

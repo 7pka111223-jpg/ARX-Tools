@@ -10,5 +10,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../plugin/src/Core.cs" />
+    <Compile Include="../plugin/src/Licensing.cs" />
   </ItemGroup>
 </Project>

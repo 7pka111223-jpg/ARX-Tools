@@ -62,6 +62,15 @@ The window has the familiar tabs:
   `%APPDATA%\ARX-Tools\rules.json` (created on first save) or an
   imported file; the bundled defaults are used until then.
 
+## Licensing (optional, off by default)
+
+Both the COM checker and the NETLOAD plugin include the shared offline
+licensing gate: one signed `%APPDATA%\ARX-Tools\license.lic` covers the
+Civil 3D and Revit tools on a machine (node-lock, expiry + grace,
+clock-rollback guard). With no public key embedded — the default — the
+gate is inactive and everything runs unrestricted. See
+`docs/LICENSING.md`.
+
 ## Development
 
 Pure logic lives in the shared `drawingchecker` library

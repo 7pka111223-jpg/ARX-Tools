@@ -89,6 +89,16 @@ public class Commands
             MessageBox.Show("Open a drawing first.", "ARX Drawing Checker");
             return;
         }
+        var license = Licensing.CheckLicense();
+        if (!license.Allowed)
+        {
+            MessageBox.Show(license.Describe(), "ARX Drawing Checker — license",
+                            MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        if (license.Warning)
+            MessageBox.Show(license.Describe(), "ARX Drawing Checker — license",
+                            MessageBoxButton.OK, MessageBoxImage.Information);
         try
         {
             var (rulesPath, rules) = LoadRules();
