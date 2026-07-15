@@ -43,3 +43,19 @@ const html = template
 
 writeFileSync('dist/drawing-checker.html', html);
 console.log('Built dist/drawing-checker.html');
+
+await build({
+  entryPoints: ['src/hy8/ui/app.js'],
+  bundle: true,
+  format: 'iife',
+  platform: 'browser',
+  globalName: 'Hy8ImporterApp',
+  outfile: 'dist/_hy8-app.bundle.js',
+});
+
+const hy8AppCode = readFileSync('dist/_hy8-app.bundle.js', 'utf8') + '\nconst initHy8ImporterApp = Hy8ImporterApp.initApp;';
+const hy8Template = readFileSync('hy8-importer.template.html', 'utf8');
+const hy8Html = hy8Template.replace('/*__APP_CODE__*/', () => hy8AppCode);
+
+writeFileSync('dist/hy8-importer.html', hy8Html);
+console.log('Built dist/hy8-importer.html');
