@@ -26,12 +26,46 @@ the rules JSON and dictionary with the other two tools. See
 [`civil3d/README.md`](civil3d/README.md); build the distributable with
 `civil3d/tools/build_package.sh`.
 
+## HY-8 CSV Importer
+
+Maps a culvert schedule CSV (SI units) into an HY-8 `.hy8` project file (US
+customary units) and downloads an updated copy — fully offline, single file.
+
+- **Mapping modes**: match culverts by exact culvert name, or by nearest
+  station within a configurable tolerance (default 15 m). Unmatched rows on
+  either side are listed for manual review.
+- **Station format**: chainages look like `X+YYY` (e.g. `12+727`). A minus
+  sign immediately after the `+` (e.g. `0+-887`, `-2+-601`) marks the whole
+  chainage negative — this is a quirk of the source CSV export, not a typo.
+- **What gets imported**: for every mapped pair, `INVERTDATA` (inlet station
+  0, USIL, outlet station = CSV length, DSIL), `BARRELDATA` span/rise
+  (Manning's n is left untouched), `NUMBEROFBARRELS` (from CSV `Cells`), the
+  `CHANNELGEOMETRY` invert elevation, and every `TWRATINGCURVE` constant
+  tailwater elevation are all set from the CSV, converted to US units. The
+  label from whichever mode wasn't used for matching is overwritten from the
+  CSV too (name mode updates the crossing's station label; station mode
+  updates the culvert name).
+- **Differences report**: before importing, review every field that would
+  change (tolerance 0.01 ft), shown as CSV (SI), CSV converted to US, and the
+  current HY-8 value.
+- **Design flows**: paste `name, flow (m³/s)` pairs (or load a small CSV) to
+  set `DISCHARGERANGE` and regenerate the 11 `DISCHARGEXYDESIGN_Y` points.
+  Design = the entered flow, max = design + 5 m³/s, min = 0; values are
+  converted to cfs on write.
+- **Units**: the CSV is SI (meters, m³/s); the `.hy8` file stores everything
+  in US customary units (feet, cfs) regardless of its `UNITS` flag — this
+  tool converts on import (1 m = 1/0.3048 ft, 1 m³/s = 1/0.3048³ cfs).
+
+No data leaves the browser — the CSV and `.hy8` file are read and written
+entirely client-side, and the tool works from a double-clicked `file://`
+copy of `dist/hy8-importer.html`.
+
 ## Development
 
     npm install
     npm test          # run the JS unit test suite
     npm run test:py    # run the Revit checker's Python unit tests (no Revit needed)
-    npm run build      # produce dist/drawing-checker.html
+    npm run build      # produce dist/drawing-checker.html and dist/hy8-importer.html
 
 ## Usage
 
@@ -39,6 +73,9 @@ Open `dist/drawing-checker.html` in a browser. No internet connection or
 installation is required — it is a single self-contained file. Drag PDF
 files onto it, add/edit/delete rules in the Rules list if needed, and
 export a report.
+
+Open `dist/hy8-importer.html` the same way to use the HY-8 CSV Importer
+described above.
 
 ## ARX Salary Calculator
 
