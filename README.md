@@ -60,6 +60,25 @@ No data leaves the browser — the CSV and `.hy8` file are read and written
 entirely client-side, and the tool works from a double-clicked `file://`
 copy of `dist/hy8-importer.html`.
 
+### Try it
+
+1. `npm run build` (or use an already-built `dist/hy8-importer.html`) and
+   double-click the file to open it in a browser.
+2. Load a known-good pair for a first test run:
+   `tests/fixtures/hy8/Table1.csv` and `tests/fixtures/hy8/Section_1.hy8`.
+   With the default "match by culvert name" mode this maps 83 of 83 CSV
+   rows, leaving one HY-8 crossing (`CU-JSS-38`) unmatched — that's expected,
+   it has no CSV row.
+3. Open the **Differences** panel and check a few rows look sane before
+   importing.
+4. Optionally paste a design flow, e.g. `CU-JSS-01, 10`.
+5. Click **Import & download** and confirm `Section_1_updated.hy8`
+   downloads. Only the mapped crossings' lines should have changed —
+   diff it against the original if you want to confirm.
+6. For the real acceptance test, open the downloaded file in HY-8 itself
+   and spot-check a culvert's USIL/DSIL/span/rise/length/barrels/tailwater/
+   design flow, then save.
+
 ## Development
 
     npm install
