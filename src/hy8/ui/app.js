@@ -2,6 +2,7 @@ import { parseHy8, serializeHy8 } from '../hy8File.js';
 import { parseCulvertCsv } from '../csvCulverts.js';
 import { mapCulverts } from '../mapper.js';
 import { diffPair } from '../differ.js';
+import { generateDifferencesCsv } from '../diffExport.js';
 import { parseFlowInput, applyFlows } from '../flowUpdater.js';
 import { applyGeometryImport } from '../applyImport.js';
 import { renderMappingRow, renderUnmatchedCsvRow, renderUnmatchedHy8Row, renderDiffSection } from './render.js';
@@ -73,9 +74,11 @@ export function initApp(root, { download = defaultDownload } = {}) {
     <section class="card">
       <div class="card__header">
         <h2 class="card__title">4. Differences</h2>
-        <span class="card__hint">Fields that would change on import (tolerance 0.01 ft)</span>
+        <span class="card__hint">All values shown in SI — fields that would change on import (tolerance ~0.003 m)</span>
       </div>
       <div id="diffContainer"></div>
+      <button id="exportDiffsBtn" class="btn" disabled>Export differences as CSV</button>
+      <p id="diffStatusMsg" class="status"></p>
     </section>
 
     <section class="card">
@@ -115,6 +118,8 @@ export function initApp(root, { download = defaultDownload } = {}) {
     unmatchedCsvTable: root.querySelector('#unmatchedCsvTable tbody'),
     unmatchedHy8Table: root.querySelector('#unmatchedHy8Table tbody'),
     diffContainer: root.querySelector('#diffContainer'),
+    exportDiffsBtn: root.querySelector('#exportDiffsBtn'),
+    diffStatusMsg: root.querySelector('#diffStatusMsg'),
     flowText: root.querySelector('#flowText'),
     flowFileInput: root.querySelector('#flowFileInput'),
     flowUnmatched: root.querySelector('#flowUnmatched'),
@@ -157,10 +162,12 @@ export function initApp(root, { download = defaultDownload } = {}) {
     els.unmatchedCsvTable.innerHTML = unmatchedCsv.map(renderUnmatchedCsvRow).join('');
     els.unmatchedHy8Table.innerHTML = unmatchedHy8.map(renderUnmatchedHy8Row).join('');
 
+    let totalDiffs = 0;
     if (pairs.length && state.hy8Doc) {
       const blocks = [];
       for (const pair of pairs) {
         const diffs = diffPair(pair, state.hy8Doc, state.mode);
+        totalDiffs += diffs.length;
         if (diffs.length) blocks.push(renderDiffSection(pair.culvert.name || pair.crossing.name || '', diffs));
       }
       els.diffContainer.innerHTML = blocks.length ? blocks.join('') : '<p class="hint">No differences found for the mapped pairs.</p>';
@@ -170,6 +177,7 @@ export function initApp(root, { download = defaultDownload } = {}) {
 
     updateFlowPreview();
     els.importBtn.disabled = pairs.length === 0;
+    els.exportDiffsBtn.disabled = totalDiffs === 0;
   }
 
   function setCsvText(text, fileName) {
@@ -203,8 +211,8 @@ export function initApp(root, { download = defaultDownload } = {}) {
     }
 
     const outputText = serializeHy8(doc);
-    const outName = downloadName(state.hy8FileName);
-    download(outName, outputText);
+    const outName = downloadName(state.hy8FileName, '_updated.hy8');
+    download(outName, outputText, 'application/octet-stream');
 
     els.statusMsg.textContent =
       `Downloaded ${outName} — ${state.mapResult.pairs.length} culvert(s) updated` +
@@ -269,18 +277,31 @@ export function initApp(root, { download = defaultDownload } = {}) {
     }
   });
 
+  els.exportDiffsBtn.addEventListener('click', () => {
+    try {
+      const csv = generateDifferencesCsv(state.mapResult.pairs, state.hy8Doc, state.mode);
+      const name = downloadName(state.hy8FileName, '_differences.csv');
+      download(name, csv, 'text/csv');
+      els.diffStatusMsg.textContent = `Downloaded ${name}.`;
+      els.diffStatusMsg.className = 'status status--success';
+    } catch (err) {
+      els.diffStatusMsg.textContent = `Export failed: ${err.message}`;
+      els.diffStatusMsg.className = 'status status--error';
+    }
+  });
+
   render();
 
   return { state, setCsvText, setHy8Text, recomputeMapping, runImport };
 }
 
-function downloadName(originalName) {
-  const base = (originalName || 'Section').replace(/\.hy8$/i, '');
-  return `${base}_updated.hy8`;
+function downloadName(originalName, suffix) {
+  const base = (originalName || 'Section').replace(/\.[^./\\]+$/, '');
+  return `${base}${suffix}`;
 }
 
-function defaultDownload(name, text) {
-  const blob = new Blob([text], { type: 'application/octet-stream' });
+function defaultDownload(name, text, mime = 'application/octet-stream') {
+  const blob = new Blob([text], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

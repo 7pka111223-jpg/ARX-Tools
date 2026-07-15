@@ -72,6 +72,8 @@ test('diffPair on CU-JSS-01 reports USIL as different but not span/rise', () => 
   const usil = diffs.find((d) => d.field === 'USIL');
   assert.equal(usil.csvValue, -355.29);
   assert.equal(usil.hy8Value, 16.404199);
+  // hy8ValueSI is the SI-converted twin of hy8Value, for SI-only display.
+  assert.equal(usil.hy8ValueSI.toFixed(6), (16.404199 * 0.3048).toFixed(6));
 
   assert.ok(!fields.includes('span'));
   assert.ok(!fields.includes('rise'));

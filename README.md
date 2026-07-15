@@ -46,15 +46,20 @@ customary units) and downloads an updated copy — fully offline, single file.
   CSV too (name mode updates the crossing's station label; station mode
   updates the culvert name).
 - **Differences report**: before importing, review every field that would
-  change (tolerance 0.01 ft), shown as CSV (SI), CSV converted to US, and the
-  current HY-8 value.
+  change (tolerance ~0.003 m), shown as CSV value and current HY-8 value —
+  both in SI, side by side. Click **Export differences as CSV** to download
+  the full report (every mapped culvert, every differing field) as
+  `<name>_differences.csv`.
 - **Design flows**: paste `name, flow (m³/s)` pairs (or load a small CSV) to
   set `DISCHARGERANGE` and regenerate the 11 `DISCHARGEXYDESIGN_Y` points.
   Design = the entered flow, max = design + 5 m³/s, min = 0; values are
   converted to cfs on write.
-- **Units**: the CSV is SI (meters, m³/s); the `.hy8` file stores everything
-  in US customary units (feet, cfs) regardless of its `UNITS` flag — this
-  tool converts on import (1 m = 1/0.3048 ft, 1 m³/s = 1/0.3048³ cfs).
+- **Units**: the whole UI — file labels, the differences panel, and the
+  exported CSV — is SI throughout (meters, m³/s). The `.hy8` file itself
+  always stores US customary units (feet, cfs) regardless of its `UNITS`
+  flag, since that's the format HY-8 expects; the tool converts on import
+  (1 m = 1/0.3048 ft, 1 m³/s = 1/0.3048³ cfs) and converts back to SI only
+  for display, so you never have to read a foot or cfs value in the browser.
 
 No data leaves the browser — the CSV and `.hy8` file are read and written
 entirely client-side, and the tool works from a double-clicked `file://`
@@ -70,7 +75,8 @@ copy of `dist/hy8-importer.html`.
    rows, leaving one HY-8 crossing (`CU-JSS-38`) unmatched — that's expected,
    it has no CSV row.
 3. Open the **Differences** panel and check a few rows look sane before
-   importing.
+   importing — every value is SI. Click **Export differences as CSV** if
+   you want the full report to review outside the browser.
 4. Optionally paste a design flow, e.g. `CU-JSS-01, 10`.
 5. Click **Import & download** and confirm `Section_1_updated.hy8`
    downloads. Only the mapped crossings' lines should have changed —

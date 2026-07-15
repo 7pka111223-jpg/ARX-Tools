@@ -7,6 +7,10 @@ export function mToFt(x) {
   return x * M_TO_FT;
 }
 
+export function ftToM(x) {
+  return x / M_TO_FT;
+}
+
 export function cmsToCfs(x) {
   return x * CMS_TO_CFS;
 }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { M_TO_FT, CMS_TO_CFS, mToFt, cmsToCfs, parseStationMeters } from '../src/hy8/units.js';
+import { M_TO_FT, CMS_TO_CFS, mToFt, ftToM, cmsToCfs, parseStationMeters } from '../src/hy8/units.js';
 import { parseCulvertCsv } from '../src/hy8/csvCulverts.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -19,6 +19,12 @@ test('conversion constants and round-trip against fixture values', () => {
   assert.equal(CMS_TO_CFS.toFixed(6), '35.314667');
   assert.equal(mToFt(72.3).toFixed(6), '237.204724');
   assert.equal(cmsToCfs(10).toFixed(6), '353.146667');
+});
+
+test('ftToM is the exact inverse of mToFt', () => {
+  assert.equal(ftToM(237.204724).toFixed(1), '72.3');
+  assert.equal(ftToM(mToFt(72.3)).toFixed(10), (72.3).toFixed(10));
+  assert.equal(ftToM(mToFt(-355.29)).toFixed(10), (-355.29).toFixed(10));
 });
 
 test('parseStationMeters handles the "+-" negative-chainage quirk', () => {

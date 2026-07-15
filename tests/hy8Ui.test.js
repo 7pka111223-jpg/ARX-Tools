@@ -23,7 +23,7 @@ function makeApp() {
   setupDom();
   const root = document.getElementById('app');
   const downloads = [];
-  const app = initApp(root, { download: (name, text) => downloads.push({ name, text }) });
+  const app = initApp(root, { download: (name, text, mime) => downloads.push({ name, text, mime }) });
   return { root, app, downloads };
 }
 
@@ -55,14 +55,48 @@ test('switching to station mode recomputes the mapping with the tolerance field 
   assert.ok(app.state.mapResult.pairs.length > 0);
 });
 
-test('the differences panel lists CU-JSS-01 with a USIL difference', () => {
+test('the differences panel lists CU-JSS-01 with a USIL difference, shown entirely in SI', () => {
   const { root, app } = makeApp();
   app.setCsvText(csvFixture, 'Table1.csv');
   app.setHy8Text(hy8Fixture, 'Section_1.hy8');
 
+  const diffTable = root.querySelector('#diffContainer table.diff-table');
+  assert.ok(diffTable);
+  const headerText = diffTable.querySelector('thead').textContent;
+  assert.ok(headerText.includes('CSV (SI)'));
+  assert.ok(headerText.includes('HY-8 (SI)'));
+  assert.ok(!headerText.includes('US'));
+
   const diffHtml = root.querySelector('#diffContainer').innerHTML;
   assert.ok(diffHtml.includes('CU-JSS-01'));
   assert.ok(diffHtml.includes('USIL'));
+  // The raw HY-8 feet value (16.404199) must never appear — only its SI twin.
+  assert.ok(!diffHtml.includes('16.404199'));
+});
+
+test('the export-differences button is enabled once a mapping with diffs exists, and disabled with none loaded', () => {
+  const { root, app } = makeApp();
+  assert.equal(root.querySelector('#exportDiffsBtn').disabled, true);
+
+  app.setCsvText(csvFixture, 'Table1.csv');
+  app.setHy8Text(hy8Fixture, 'Section_1.hy8');
+  assert.equal(root.querySelector('#exportDiffsBtn').disabled, false);
+});
+
+test('clicking export differences downloads a SI-only CSV named after the .hy8 file', () => {
+  const { root, app, downloads } = makeApp();
+  app.setCsvText(csvFixture, 'Table1.csv');
+  app.setHy8Text(hy8Fixture, 'Section_1.hy8');
+
+  root.querySelector('#exportDiffsBtn').dispatchEvent(new window.Event('click'));
+
+  assert.equal(downloads.length, 1);
+  assert.equal(downloads[0].name, 'Section_1_differences.csv');
+  assert.equal(downloads[0].mime, 'text/csv');
+  assert.ok(downloads[0].text.startsWith('Culvert,Crossing,Field,CSV value (SI),HY-8 value (SI)'));
+  assert.ok(downloads[0].text.includes('CU-JSS-01'));
+  assert.ok(!downloads[0].text.includes('16.404199'));
+  assert.ok(root.querySelector('#diffStatusMsg').textContent.includes('Section_1_differences.csv'));
 });
 
 test('flow textarea reports unmatched names', () => {
