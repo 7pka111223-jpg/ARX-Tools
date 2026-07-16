@@ -15,6 +15,10 @@ export function cmsToCfs(x) {
   return x * CMS_TO_CFS;
 }
 
+export function cfsToCms(x) {
+  return x / CMS_TO_CFS;
+}
+
 // Chainage/station strings of the form "X+YYY" (e.g. "12+727", "-2+592").
 // Value = major*1000 + minor. A leading '-' on the major part, OR a '-'
 // immediately after the '+' (e.g. "0+-887", "-2+-601"), marks the whole

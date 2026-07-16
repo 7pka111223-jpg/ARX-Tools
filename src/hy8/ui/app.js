@@ -5,7 +5,9 @@ import { diffPair } from '../differ.js';
 import { generateDifferencesCsv } from '../diffExport.js';
 import { parseFlowInput, applyFlows } from '../flowUpdater.js';
 import { applyGeometryImport } from '../applyImport.js';
-import { renderMappingRow, renderUnmatchedCsvRow, renderUnmatchedHy8Row, renderDiffSection } from './render.js';
+import { buildComputedSummary, buildExtractedSummary } from '../summary.js';
+import { generateSummaryCsv } from '../summaryExport.js';
+import { renderMappingRow, renderUnmatchedCsvRow, renderUnmatchedHy8Row, renderDiffSection, renderSummaryTable } from './render.js';
 
 export function initApp(root, { download = defaultDownload } = {}) {
   const state = {
@@ -16,6 +18,8 @@ export function initApp(root, { download = defaultDownload } = {}) {
     mode: 'name',
     toleranceM: 15,
     mapResult: { pairs: [], unmatchedCsv: [], unmatchedHy8: [] },
+    summaryRows: null,
+    summarySource: null,
   };
 
   root.innerHTML = `
@@ -102,6 +106,23 @@ export function initApp(root, { download = defaultDownload } = {}) {
       <p id="statusMsg" class="status"></p>
       <p class="hint">No data leaves this browser — the CSV and HY-8 file are read and written entirely client-side.</p>
     </section>
+
+    <section class="card">
+      <div class="card__header">
+        <h2 class="card__title">7. Culvert summary (SI)</h2>
+        <span class="card__hint">HW/D, normal &amp; critical depth, headwater elevation, outlet velocity per culvert</span>
+      </div>
+      <div class="field-row">
+        <button id="computeSummaryBtn" class="btn" disabled>Compute summary (approx. HDS-5)</button>
+        <button id="extractSummaryBtn" class="btn" disabled>Extract HY-8 results from loaded file</button>
+        <button id="exportSummaryBtn" class="btn" disabled>Export summary as CSV</button>
+      </div>
+      <p class="hint" id="summaryHint">Compute runs an approximate FHWA HDS-5 analysis (box culverts,
+        square-edge headwall inlet) on the imported geometry and design flows — spot-check against HY-8.
+        Extract reads HY-8's own results from a .hy8 file that HY-8 has analyzed and saved.</p>
+      <div id="summaryContainer"></div>
+      <p id="summaryStatusMsg" class="status"></p>
+    </section>
   `;
 
   const els = {
@@ -125,6 +146,11 @@ export function initApp(root, { download = defaultDownload } = {}) {
     flowUnmatched: root.querySelector('#flowUnmatched'),
     importBtn: root.querySelector('#importBtn'),
     statusMsg: root.querySelector('#statusMsg'),
+    computeSummaryBtn: root.querySelector('#computeSummaryBtn'),
+    extractSummaryBtn: root.querySelector('#extractSummaryBtn'),
+    exportSummaryBtn: root.querySelector('#exportSummaryBtn'),
+    summaryContainer: root.querySelector('#summaryContainer'),
+    summaryStatusMsg: root.querySelector('#summaryStatusMsg'),
   };
 
   function recomputeMapping() {
@@ -132,7 +158,12 @@ export function initApp(root, { download = defaultDownload } = {}) {
       state.hy8Doc && state.csvRows.length
         ? mapCulverts(state.csvRows, state.hy8Doc, { mode: state.mode, toleranceM: state.toleranceM })
         : { pairs: [], unmatchedCsv: [], unmatchedHy8: [] };
+    // Inputs changed, so any previously computed summary is stale.
+    state.summaryRows = null;
+    state.summarySource = null;
+    els.summaryStatusMsg.textContent = '';
     render();
+    renderSummary();
   }
 
   function updateFlowPreview() {
@@ -178,6 +209,14 @@ export function initApp(root, { download = defaultDownload } = {}) {
     updateFlowPreview();
     els.importBtn.disabled = pairs.length === 0;
     els.exportDiffsBtn.disabled = totalDiffs === 0;
+    els.computeSummaryBtn.disabled = !state.hy8Doc;
+    els.extractSummaryBtn.disabled = !state.hy8Doc;
+    els.exportSummaryBtn.disabled = !state.summaryRows;
+  }
+
+  function renderSummary() {
+    els.summaryContainer.innerHTML = state.summaryRows ? renderSummaryTable(state.summaryRows) : '';
+    els.exportSummaryBtn.disabled = !state.summaryRows;
   }
 
   function setCsvText(text, fileName) {
@@ -194,14 +233,14 @@ export function initApp(root, { download = defaultDownload } = {}) {
     recomputeMapping();
   }
 
-  function runImport() {
-    if (!state.hy8Doc || !state.mapResult.pairs.length) {
-      els.statusMsg.textContent = 'Load a CSV and a .hy8 file and compute a mapping before importing.';
-      els.statusMsg.className = 'status status--error';
-      return;
+  // The imported doc: geometry patches for the current mapping plus any
+  // pasted flows. When nothing is mapped, this is the loaded file as-is
+  // (still useful for analyzing an already-complete .hy8).
+  function buildUpdatedDoc() {
+    let doc = state.hy8Doc;
+    if (state.mapResult.pairs.length) {
+      doc = applyGeometryImport(doc, state.mapResult.pairs, state.mode);
     }
-    let doc = applyGeometryImport(state.hy8Doc, state.mapResult.pairs, state.mode);
-
     const flows = parseFlowInput(els.flowText.value);
     let flowResult = { updated: [], unmatchedNames: [] };
     if (flows.length) {
@@ -209,6 +248,16 @@ export function initApp(root, { download = defaultDownload } = {}) {
       doc = applied.doc;
       flowResult = applied;
     }
+    return { doc, flows, flowResult };
+  }
+
+  function runImport() {
+    if (!state.hy8Doc || !state.mapResult.pairs.length) {
+      els.statusMsg.textContent = 'Load a CSV and a .hy8 file and compute a mapping before importing.';
+      els.statusMsg.className = 'status status--error';
+      return;
+    }
+    const { doc, flows, flowResult } = buildUpdatedDoc();
 
     const outputText = serializeHy8(doc);
     const outName = downloadName(state.hy8FileName, '_updated.hy8');
@@ -287,6 +336,49 @@ export function initApp(root, { download = defaultDownload } = {}) {
     } catch (err) {
       els.diffStatusMsg.textContent = `Export failed: ${err.message}`;
       els.diffStatusMsg.className = 'status status--error';
+    }
+  });
+
+  function setSummary(rows, source, label) {
+    state.summaryRows = rows;
+    state.summarySource = source;
+    renderSummary();
+    const analyzed = rows.filter((r) => !r.error).length;
+    const skipped = rows.length - analyzed;
+    els.summaryStatusMsg.textContent =
+      `${label}: ${analyzed} culvert(s) analyzed` + (skipped ? `, ${skipped} skipped (see notes in rows)` : '') + '.';
+    els.summaryStatusMsg.className = 'status status--success';
+  }
+
+  els.computeSummaryBtn.addEventListener('click', () => {
+    try {
+      const { doc } = buildUpdatedDoc();
+      setSummary(buildComputedSummary(doc), 'computed (approx. HDS-5)', 'Computed after import');
+    } catch (err) {
+      els.summaryStatusMsg.textContent = `Analysis failed: ${err.message}`;
+      els.summaryStatusMsg.className = 'status status--error';
+    }
+  });
+
+  els.extractSummaryBtn.addEventListener('click', () => {
+    try {
+      setSummary(buildExtractedSummary(state.hy8Doc), 'extracted from HY-8 file', 'Extracted from loaded file');
+    } catch (err) {
+      els.summaryStatusMsg.textContent = `Extraction failed: ${err.message}`;
+      els.summaryStatusMsg.className = 'status status--error';
+    }
+  });
+
+  els.exportSummaryBtn.addEventListener('click', () => {
+    try {
+      const csv = generateSummaryCsv(state.summaryRows, state.summarySource);
+      const name = downloadName(state.hy8FileName, '_summary.csv');
+      download(name, csv, 'text/csv');
+      els.summaryStatusMsg.textContent = `Downloaded ${name}.`;
+      els.summaryStatusMsg.className = 'status status--success';
+    } catch (err) {
+      els.summaryStatusMsg.textContent = `Export failed: ${err.message}`;
+      els.summaryStatusMsg.className = 'status status--error';
     }
   });
 

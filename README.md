@@ -54,12 +54,27 @@ customary units) and downloads an updated copy — fully offline, single file.
   set `DISCHARGERANGE` and regenerate the 11 `DISCHARGEXYDESIGN_Y` points.
   Design = the entered flow, max = design + 5 m³/s, min = 0; values are
   converted to cfs on write.
-- **Units**: the whole UI — file labels, the differences panel, and the
-  exported CSV — is SI throughout (meters, m³/s). The `.hy8` file itself
-  always stores US customary units (feet, cfs) regardless of its `UNITS`
-  flag, since that's the format HY-8 expects; the tool converts on import
-  (1 m = 1/0.3048 ft, 1 m³/s = 1/0.3048³ cfs) and converts back to SI only
-  for display, so you never have to read a foot or cfs value in the browser.
+- **Culvert summary (analysis)**: after import, a per-culvert summary table
+  reports HW/D, normal depth, critical depth, headwater elevation, and
+  outlet velocity — all in SI — with a CSV export. Two sources:
+  - *Compute (approx. HDS-5)* runs an independent FHWA HDS-5 analysis in the
+    browser on the imported geometry and design flows (box culverts,
+    square-edge headwall inlet, ke = 0.5, constant tailwater, no roadway
+    overtopping). It is an approximation of HY-8's method — spot-check
+    against HY-8 before relying on it.
+  - *Extract from loaded file* reads HY-8's own computed rating-curve
+    results (headwater elevation, outlet velocity) from a `.hy8` file that
+    HY-8 has analyzed and saved, interpolated at the design flow. Normal
+    and critical depth aren't stored in the file, so those two columns are
+    always computed from geometry. A file that HY-8 hasn't analyzed yet is
+    flagged per row rather than showing zeros as results.
+- **Units**: the whole UI — file labels, the differences panel, the culvert
+  summary, and the exported CSVs — is SI throughout (meters, m³/s). The
+  `.hy8` file itself always stores US customary units (feet, cfs) regardless
+  of its `UNITS` flag, since that's the format HY-8 expects; the tool
+  converts on import (1 m = 1/0.3048 ft, 1 m³/s = 1/0.3048³ cfs) and
+  converts back to SI only for display, so you never have to read a foot or
+  cfs value in the browser.
 
 No data leaves the browser — the CSV and `.hy8` file are read and written
 entirely client-side, and the tool works from a double-clicked `file://`

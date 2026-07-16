@@ -165,6 +165,9 @@
   .status--error { color: var(--color-danger); }
 
   #exportDiffsBtn { margin-top: 8px; }
+
+  #summaryContainer { overflow-x: auto; margin-top: 12px; }
+  #summaryResultTable { min-width: 760px; }
 </style>
 </head>
 <body>
@@ -175,7 +178,7 @@
     </span>
     <div>
       <h1>HY-8 CSV Importer</h1>
-      <p>Map a culvert schedule CSV into an HY-8 project file, review differences, and set design flows — fully offline</p>
+      <p>Map a culvert schedule CSV into an HY-8 project file, review differences, set design flows, and analyze culverts — fully offline</p>
     </div>
   </header>
   <div id="app"></div>

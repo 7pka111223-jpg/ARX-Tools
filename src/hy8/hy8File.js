@@ -53,6 +53,11 @@ function parseCrossing(lines, startIdx) {
   let invertDataLine = -1;
   let barrelDataLine = -1;
   let numberOfBarrelsLine = -1;
+  let culvertShape = null;
+  // HY-8's computed results: FLOW/ELEVATION/VELOCITY triplets inside the
+  // indented RATINGCURVE sub-block. Read-only — this tool never writes them.
+  const ratingCurve = [];
+  let pendingRating = null;
 
   for (let i = startIdx + 1; i < lines.length; i++) {
     const tok = firstToken(lines[i]);
@@ -75,11 +80,22 @@ function parseCrossing(lines, startIdx) {
     if (tok === 'TWRATINGCURVE' && twRatingCurveLines.length === 0) {
       for (let r = 0; r < numRatingCurveValue; r++) twRatingCurveLines.push(i + r);
     }
+    // The RATINGCURVE sub-block lines are tab-indented, so `tok` is null for
+    // them; match their keywords with the indentation stripped instead.
+    const indentedTok = tok === null ? firstToken(lines[i].trimStart()) : null;
+    if (indentedTok === 'FLOW') pendingRating = { flowLine: i, elevationLine: -1, velocityLine: -1 };
+    if (indentedTok === 'ELEVATION' && pendingRating) pendingRating.elevationLine = i;
+    if (indentedTok === 'VELOCITY' && pendingRating) {
+      pendingRating.velocityLine = i;
+      ratingCurve.push(pendingRating);
+      pendingRating = null;
+    }
     if (tok === 'STARTCULVERT' && culvertStartLine === -1) {
       culvertStartLine = i;
       culvertName = extractQuoted(lines[i]);
     }
     if (tok === 'ENDCULVERT' && culvertEndLine === -1) culvertEndLine = i;
+    if (tok === 'CULVERTSHAPE' && culvertShape === null) culvertShape = extractFirstInt(lines[i]);
     if (tok === 'INVERTDATA' && invertDataLine === -1) invertDataLine = i;
     if (tok === 'BARRELDATA' && barrelDataLine === -1) barrelDataLine = i;
     if (tok === 'NUMBEROFBARRELS' && numberOfBarrelsLine === -1) numberOfBarrelsLine = i;
@@ -98,6 +114,7 @@ function parseCrossing(lines, startIdx) {
     numRatingCurveLine,
     numRatingCurveValue,
     twRatingCurveLines,
+    ratingCurve,
     culverts: [
       {
         name: culvertName,
@@ -106,6 +123,7 @@ function parseCrossing(lines, startIdx) {
         invertDataLine,
         barrelDataLine,
         numberOfBarrelsLine,
+        culvertShape,
       },
     ],
   };

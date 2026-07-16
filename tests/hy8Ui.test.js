@@ -133,3 +133,64 @@ test('Import & download is a no-op with a status message when nothing is mapped 
   root.querySelector('#importBtn').dispatchEvent(new window.Event('click'));
   assert.equal(downloads.length, 0);
 });
+
+test('Compute summary renders one row per crossing with SI hydraulic results', () => {
+  const { root, app } = makeApp();
+  app.setCsvText(csvFixture, 'Table1.csv');
+  app.setHy8Text(hy8Fixture, 'Section_1.hy8');
+
+  root.querySelector('#flowText').value = 'CU-JSS-01, 10';
+  root.querySelector('#flowText').dispatchEvent(new window.Event('input'));
+
+  assert.equal(root.querySelector('#computeSummaryBtn').disabled, false);
+  root.querySelector('#computeSummaryBtn').dispatchEvent(new window.Event('click'));
+
+  const table = root.querySelector('#summaryResultTable');
+  assert.ok(table, 'summary table should render');
+  assert.equal(table.querySelectorAll('tbody tr').length, 84);
+  assert.ok(table.querySelector('thead').textContent.includes('HW/D'));
+  assert.ok(table.querySelector('thead').textContent.includes('Critical depth (m)'));
+  assert.ok(root.querySelector('#summaryStatusMsg').textContent.includes('84 culvert(s) analyzed'));
+  assert.equal(root.querySelector('#exportSummaryBtn').disabled, false);
+});
+
+test('Extract summary on the unanalyzed fixture flags rows instead of inventing numbers', () => {
+  const { root, app } = makeApp();
+  app.setHy8Text(hy8Fixture, 'Section_1.hy8');
+
+  root.querySelector('#extractSummaryBtn').dispatchEvent(new window.Event('click'));
+
+  const table = root.querySelector('#summaryResultTable');
+  assert.ok(table);
+  assert.equal(table.querySelectorAll('tbody tr').length, 84);
+});
+
+test('Export summary downloads a SI CSV named after the .hy8 file', () => {
+  const { root, app, downloads } = makeApp();
+  app.setCsvText(csvFixture, 'Table1.csv');
+  app.setHy8Text(hy8Fixture, 'Section_1.hy8');
+
+  root.querySelector('#computeSummaryBtn').dispatchEvent(new window.Event('click'));
+  root.querySelector('#exportSummaryBtn').dispatchEvent(new window.Event('click'));
+
+  assert.equal(downloads.length, 1);
+  assert.equal(downloads[0].name, 'Section_1_summary.csv');
+  assert.equal(downloads[0].mime, 'text/csv');
+  assert.ok(downloads[0].text.startsWith('Culvert,Crossing,Design flow (m3/s),HW/D,Normal depth (m),Critical depth (m)'));
+  assert.ok(downloads[0].text.includes('CU-JSS-01'));
+});
+
+test('changing the mapping clears a stale summary', () => {
+  const { root, app } = makeApp();
+  app.setCsvText(csvFixture, 'Table1.csv');
+  app.setHy8Text(hy8Fixture, 'Section_1.hy8');
+
+  root.querySelector('#computeSummaryBtn').dispatchEvent(new window.Event('click'));
+  assert.ok(root.querySelector('#summaryResultTable'));
+
+  root.querySelector('#modeStation').checked = true;
+  root.querySelector('#modeStation').dispatchEvent(new window.Event('change'));
+
+  assert.equal(root.querySelector('#summaryResultTable'), null);
+  assert.equal(root.querySelector('#exportSummaryBtn').disabled, true);
+});

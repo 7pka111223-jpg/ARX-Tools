@@ -21,6 +21,25 @@ function formatValue(field, value) {
   return field === 'cells' ? String(value) : value.toFixed(6);
 }
 
+function numCell(v, digits = 3) {
+  return v === null || v === undefined || Number.isNaN(v) ? '—' : v.toFixed(digits);
+}
+
+export function renderSummaryTable(rows) {
+  const body = rows
+    .map((r) => {
+      if (r.error) {
+        return `<tr><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.crossingName)}</td><td>${numCell(r.designFlowCms)}</td><td colspan="6" class="hint">${escapeHtml(r.error)}</td></tr>`;
+      }
+      return `<tr><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.crossingName)}</td><td>${numCell(r.designFlowCms)}</td><td>${numCell(r.hwOverD)}</td><td>${numCell(r.normalDepthM)}</td><td>${numCell(r.criticalDepthM)}</td><td>${numCell(r.hwElevationM)}</td><td>${numCell(r.outletVelocityMs)}</td><td>${escapeHtml(r.control || '—')}</td></tr>`;
+    })
+    .join('');
+  return `<table class="diff-table" id="summaryResultTable">
+    <thead><tr><th>Culvert</th><th>Crossing</th><th>Q (m³/s)</th><th>HW/D</th><th>Normal depth (m)</th><th>Critical depth (m)</th><th>HW elevation (m)</th><th>Outlet velocity (m/s)</th><th>Control</th></tr></thead>
+    <tbody>${body}</tbody>
+  </table>`;
+}
+
 export function renderDiffSection(culvertLabel, diffs) {
   const rows = diffs
     .map(
