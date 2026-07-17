@@ -1,15 +1,23 @@
-// Approximate FHWA HDS-5 culvert hydraulics for BOX culverts, computed in
-// US customary units (the .hy8 file's native units — feet, cfs).
+// FHWA HDS-5 culvert hydraulics for BOX culverts, computed in US customary
+// units (the .hy8 file's native units — feet, cfs), following HY-8's method:
 //
-// This mirrors the method HY-8 itself implements, but it is an independent
-// implementation: results are labelled approximate and should be spot-checked
-// against HY-8 (task for the user on Windows). Assumptions, fixed for this
-// tool because every culvert in the source project matches them:
-//   - Box barrels (CULVERTSHAPE 2) only; other shapes are reported unsupported.
-//   - Conventional inlet, square edge with headwall (INLETTYPE 1):
-//     HDS-5 Chart 8 / Scale 2 coefficients, entrance loss ke = 0.5.
-//   - Constant tailwater (TAILWATERTYPE 6), read from TWRATINGCURVE row 1.
-//   - No roadway-overtopping check (HW is reported even if above the road).
+//  - Inlet control: HDS-5 Chart 8 nomograph regression equations, with an
+//    energy-based floor (yc + (1+ke)·Vc²/2g). At low flows the regression is
+//    below its fitted range and under-predicts; HY-8's reported inlet-control
+//    headwater tracks the energy value there (verified against HY-8 for
+//    CU-JSS-01: HY-8 -354.68 m vs this method -354.67 m).
+//  - Outlet control: gradually-varied-flow water-surface profile through the
+//    barrel (direct step), not the full-flow friction approximation — that
+//    approximation is only valid flowing full and over-predicted headwater by
+//    ~0.2 m on shallow flows. Full-flow friction is used only when the
+//    tailwater submerges the crown or the profile reaches it.
+//  - Outlet velocity: from the depth the profile actually reaches at the
+//    outlet — normal depth on steep barrels (S2 profile), max(yc, TW) on
+//    mild ones — matching HY-8's reported outlet velocity.
+//
+// Fixed assumptions (every culvert in the source project matches them):
+// box barrels only, square-edge headwall inlet (Chart 8/Scale 2, ke = 0.5),
+// constant tailwater, no roadway overtopping.
 
 const G = 32.2; // ft/s^2
 const MANNING_KU = 1.486; // US Manning's constant
@@ -46,9 +54,29 @@ export function normalDepth(qPerBarrel, span, rise, n, slope) {
   return (lo + hi) / 2;
 }
 
-// Inlet-control headwater depth (ft above inlet invert). HDS-5 nomograph
-// equations: form-1 unsubmerged below Q/(A*sqrt(D)) = 3.5, submerged above
-// 4.0, linear transition between.
+function frictionSlope(qPerBarrel, span, n, y) {
+  const area = span * y;
+  const radius = area / (span + 2 * y);
+  const v = qPerBarrel / area;
+  const term = (n * v) / (MANNING_KU * Math.pow(radius, 2 / 3));
+  return term * term;
+}
+
+function froudeSq(qPerBarrel, span, y) {
+  const v = qPerBarrel / (span * y);
+  return (v * v) / (G * y);
+}
+
+// Energy-based headwater: depth + velocity head + entrance loss at depth y.
+function energyHead(qPerBarrel, span, y) {
+  const v = qPerBarrel / (span * y);
+  return y + ((1 + KE) * v * v) / (2 * G);
+}
+
+// Inlet-control headwater depth (ft above inlet invert): HDS-5 nomograph
+// regression (form-1 unsubmerged below Q/(A·sqrt(D)) = 3.5, submerged above
+// 4.0, linear transition), floored by the energy-based value that HY-8
+// reports at low flows where the regression is out of its fitted range.
 export function inletControlHW(qPerBarrel, span, rise, slope) {
   const area = span * rise;
   const ratio = qPerBarrel / (area * Math.sqrt(rise));
@@ -62,16 +90,23 @@ export function inletControlHW(qPerBarrel, span, rise, slope) {
   };
   const submerged = () => rise * (IC.c * ratio * ratio + IC.Y + slopeTerm);
 
-  if (ratio <= 3.5) return unsubmerged();
-  if (ratio >= 4.0) return submerged();
-  const t = (ratio - 3.5) / 0.5;
-  return unsubmerged() * (1 - t) + submerged() * t;
+  let regression;
+  if (ratio <= 3.5) regression = unsubmerged();
+  else if (ratio >= 4.0) regression = submerged();
+  else {
+    const t = (ratio - 3.5) / 0.5;
+    regression = unsubmerged() * (1 - t) + submerged() * t;
+  }
+
+  const yc = criticalDepth(qPerBarrel, span, rise);
+  const energy = energyHead(qPerBarrel, span, yc);
+  return Math.max(regression, energy);
 }
 
-// Outlet-control headwater depth (ft above inlet invert), full-flow friction
-// method: HW = ho + H - L*S, with ho = max(tailwater depth, (yc + D)/2) and
-// H = (1 + ke + 29 n^2 L / R^1.33) * V^2 / 2g.
-export function outletControlHW(qPerBarrel, span, rise, n, length, slope, twDepth) {
+// Full-flow outlet control (barrel pressurized): HW = ho + H - L*S with
+// H = (1 + ke + 29 n^2 L / R^1.33) V^2/2g. Only valid flowing full — used
+// when the tailwater is above the crown (or a profile reaches the crown).
+export function outletControlFullFlow(qPerBarrel, span, rise, n, length, slope, twDepth) {
   const area = span * rise;
   const radius = area / (2 * (span + rise));
   const velocity = qPerBarrel / area;
@@ -79,6 +114,92 @@ export function outletControlHW(qPerBarrel, span, rise, n, length, slope, twDept
   const yc = criticalDepth(qPerBarrel, span, rise);
   const ho = Math.max(twDepth, (yc + rise) / 2);
   return ho + H - length * slope;
+}
+
+// Direct-step subcritical profile from the outlet (x = L) upstream to the
+// inlet (x = 0), starting at depth yStart. Returns { yInlet, fullAt } where
+// fullAt is the distance from the inlet at which the profile reached the
+// crown (barrel goes full), or null if it never did.
+function upstreamProfile(qPerBarrel, span, rise, n, slope, length, yStart) {
+  const yc = criticalDepth(qPerBarrel, span, rise);
+  const steps = 400;
+  const dx = length / steps;
+  let y = Math.max(yStart, yc * 1.001);
+  let x = length;
+  while (x > 0) {
+    const sf = frictionSlope(qPerBarrel, span, n, y);
+    const fr2 = froudeSq(qPerBarrel, span, y);
+    const denom = 1 - fr2;
+    // Depth pinned near critical (profile can't drop below it upstream).
+    const dydx = Math.abs(denom) < 1e-6 ? 0 : (slope - sf) / denom;
+    y -= dydx * dx; // moving upstream: x decreases
+    x -= dx;
+    if (y <= yc) y = yc * 1.001;
+    if (y >= rise) return { yInlet: rise, fullAt: x };
+  }
+  return { yInlet: y, fullAt: null };
+}
+
+// Supercritical S2 profile from critical depth at the inlet (x = 0)
+// downstream to the outlet (x = L); the depth decreases toward normal depth.
+// Returns the depth at the outlet.
+function downstreamS2Profile(qPerBarrel, span, rise, n, slope, length) {
+  const yc = criticalDepth(qPerBarrel, span, rise);
+  const yn = normalDepth(qPerBarrel, span, rise, n, slope);
+  const steps = 400;
+  const dx = length / steps;
+  let y = yc * 0.999;
+  for (let x = 0; x < length; x += dx) {
+    const sf = frictionSlope(qPerBarrel, span, n, y);
+    const fr2 = froudeSq(qPerBarrel, span, y);
+    const denom = 1 - fr2;
+    const dydx = Math.abs(denom) < 1e-6 ? 0 : (slope - sf) / denom;
+    y += dydx * dx;
+    if (yn !== null && y <= yn) return yn; // asymptote reached
+    if (y >= yc) y = yc * 0.999;
+  }
+  return y;
+}
+
+// Outlet-control headwater depth (ft above inlet invert), profile-based.
+export function outletControlHW(qPerBarrel, span, rise, n, length, slope, twDepth) {
+  const yc = criticalDepth(qPerBarrel, span, rise);
+  const yn = normalDepth(qPerBarrel, span, rise, n, slope);
+
+  if (twDepth >= rise) {
+    return outletControlFullFlow(qPerBarrel, span, rise, n, length, slope, twDepth);
+  }
+
+  if (yn !== null && yn < yc && twDepth <= yc) {
+    // Steep barrel, low tailwater: flow passes through critical at the inlet
+    // and runs supercritical — downstream conditions can't raise the pool.
+    return energyHead(qPerBarrel, span, yc);
+  }
+
+  // Mild / horizontal barrel (or submerged-outlet steep): backwater profile
+  // from max(yc, TW) at the outlet up to the inlet.
+  const { yInlet, fullAt } = upstreamProfile(qPerBarrel, span, rise, n, slope, length, Math.max(yc, twDepth));
+  if (fullAt !== null) {
+    // Crown reached: remaining length flows full — friction at full-flow
+    // slope, minus the bed drop over that reach.
+    const area = span * rise;
+    const vFull = qPerBarrel / area;
+    const sfFull = frictionSlope(qPerBarrel, span, n, rise * 0.9999);
+    return rise + (sfFull - slope) * fullAt + ((1 + KE) * vFull * vFull) / (2 * G);
+  }
+  return energyHead(qPerBarrel, span, yInlet);
+}
+
+// Depth of flow at the outlet, per the governing profile.
+function outletDepth(qPerBarrel, span, rise, n, length, slope, twDepth) {
+  if (twDepth >= rise) return rise;
+  const yc = criticalDepth(qPerBarrel, span, rise);
+  const yn = normalDepth(qPerBarrel, span, rise, n, slope);
+  if (yn !== null && yn < yc && twDepth <= yc) {
+    // Steep: S2 profile accelerates from critical at the inlet toward normal.
+    return downstreamS2Profile(qPerBarrel, span, rise, n, slope, length);
+  }
+  return Math.min(Math.max(yc, twDepth), rise);
 }
 
 // Full analysis of one box culvert at flow qTotal (cfs, all barrels).
@@ -96,11 +217,8 @@ export function analyzeBoxCulvert({ qTotal, span, rise, barrels, n, length, usil
   const control = hwInlet >= hwOutlet ? 'inlet' : 'outlet';
   const hwDepth = Math.max(hwInlet, hwOutlet);
 
-  // Outlet depth: inlet control flows at normal depth; outlet control at
-  // max(critical, tailwater), both capped at the rise.
-  const outletDepth =
-    control === 'inlet' && yn !== null ? Math.min(yn, rise) : Math.min(Math.max(yc, twDepth), rise);
-  const outletVelocity = qPerBarrel / (span * outletDepth);
+  const yOut = outletDepth(qPerBarrel, span, rise, n, length, slope, twDepth);
+  const outletVelocity = qPerBarrel / (span * yOut);
 
   return {
     qTotal,
@@ -112,7 +230,7 @@ export function analyzeBoxCulvert({ qTotal, span, rise, barrels, n, length, usil
     hwOverD: hwDepth / rise,
     normalDepth: yn,
     criticalDepth: yc,
-    outletDepth,
+    outletDepth: yOut,
     outletVelocity,
   };
 }

@@ -71,14 +71,17 @@ function parseCsv(text) {
 }
 
 function findColumn(header, name) {
-  return header.findIndex((h) => h.trim() === name);
+  return header.findIndex((h) => String(h).trim() === name);
 }
 
-export function parseCulvertCsv(text) {
-  const rows = parseCsv(text).filter((r) => !(r.length === 1 && r[0] === ''));
-  if (rows.length < 2) return [];
+// Maps a raw row grid (from CSV or an Excel sheet) to culvert objects. The
+// header row is located by content — the row containing both "Name" and
+// "Station" — so a banner row (or none at all) works either way.
+export function rowsToCulverts(rows) {
+  const headerIdx = rows.findIndex((r) => findColumn(r, 'Name') !== -1 && findColumn(r, 'Station') !== -1);
+  if (headerIdx === -1) return [];
 
-  const header = rows[1];
+  const header = rows[headerIdx];
   const col = {
     name: findColumn(header, 'Name'),
     station: findColumn(header, 'Station'),
@@ -91,12 +94,12 @@ export function parseCulvertCsv(text) {
   };
 
   const result = [];
-  for (let r = 2; r < rows.length; r++) {
+  for (let r = headerIdx + 1; r < rows.length; r++) {
     const row = rows[r];
-    if (!row || row.every((f) => f.trim() === '')) continue;
-    const name = row[col.name]?.trim();
+    if (!row || row.every((f) => String(f).trim() === '')) continue;
+    const name = row[col.name] !== undefined ? String(row[col.name]).trim() : '';
     if (!name) continue;
-    const stationRaw = row[col.station]?.trim() ?? '';
+    const stationRaw = row[col.station] !== undefined ? String(row[col.station]).trim() : '';
     result.push({
       name,
       stationRaw,
@@ -110,4 +113,9 @@ export function parseCulvertCsv(text) {
     });
   }
   return result;
+}
+
+export function parseCulvertCsv(text) {
+  const rows = parseCsv(text).filter((r) => !(r.length === 1 && r[0] === ''));
+  return rowsToCulverts(rows);
 }

@@ -47,14 +47,14 @@ test('computed summary for CU-JSS-01 is in SI and self-consistent', () => {
 
   // Design flow was set to exactly 10 m3/s by the flow update.
   assert.equal(r.designFlowCms.toFixed(6), '10.000000');
-  // 10/6 cms per barrel in a 2.5 m box: sane SI magnitudes.
+  // HY-8 (Windows, user-verified): HW elev -354.68 m, inlet control, 2.38 m/s.
+  assert.equal(r.control, 'inlet');
+  assert.ok(Math.abs(r.hwElevationM - -354.68) < 0.02, `HW elev ${r.hwElevationM} vs HY-8 -354.68`);
+  assert.ok(Math.abs(r.outletVelocityMs - 2.38) < 0.02, `v ${r.outletVelocityMs} vs HY-8 2.38`);
   assert.ok(r.criticalDepthM > 0.1 && r.criticalDepthM < 1, `yc=${r.criticalDepthM}`);
   assert.ok(r.normalDepthM > 0.05 && r.normalDepthM < 1, `yn=${r.normalDepthM}`);
-  assert.ok(r.hwOverD > 0 && r.hwOverD < 1.5, `HW/D=${r.hwOverD}`);
   // HW elevation sits above the USIL (-355.29 m) by HW depth = HW/D * 2.5 m.
   assert.equal(r.hwElevationM.toFixed(4), (-355.29 + r.hwOverD * 2.5).toFixed(4));
-  assert.ok(r.outletVelocityMs > 0.5 && r.outletVelocityMs < 10, `v=${r.outletVelocityMs}`);
-  assert.ok(['inlet', 'outlet'].includes(r.control));
 });
 
 test('computed summary flags zero-slope culverts with null normal depth, not an error', () => {

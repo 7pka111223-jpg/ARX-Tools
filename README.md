@@ -28,8 +28,10 @@ the rules JSON and dictionary with the other two tools. See
 
 ## HY-8 CSV Importer
 
-Maps a culvert schedule CSV (SI units) into an HY-8 `.hy8` project file (US
-customary units) and downloads an updated copy — fully offline, single file.
+Maps a culvert schedule — CSV or Excel `.xlsx` (SI units) — into an HY-8
+`.hy8` project file (US customary units) and downloads an updated copy —
+fully offline, single file. Both the culvert schedule and the design-flow
+list accept CSV or `.xlsx` (first worksheet; legacy `.xls` is not supported).
 
 - **Mapping modes**: match culverts by exact culvert name, or by nearest
   station within a configurable tolerance (default 15 m). Unmatched rows on
@@ -57,11 +59,16 @@ customary units) and downloads an updated copy — fully offline, single file.
 - **Culvert summary (analysis)**: after import, a per-culvert summary table
   reports HW/D, normal depth, critical depth, headwater elevation, and
   outlet velocity — all in SI — with a CSV export. Two sources:
-  - *Compute (approx. HDS-5)* runs an independent FHWA HDS-5 analysis in the
-    browser on the imported geometry and design flows (box culverts,
-    square-edge headwall inlet, ke = 0.5, constant tailwater, no roadway
-    overtopping). It is an approximation of HY-8's method — spot-check
-    against HY-8 before relying on it.
+  - *Compute (approx. HDS-5)* runs an FHWA HDS-5 analysis in the browser on
+    the imported geometry and design flows, following HY-8's method: inlet
+    control from the Chart-8 nomograph equations with an energy-based floor
+    at low flows, outlet control from a direct-step water-surface profile
+    through the barrel (full-flow friction only when the crown is
+    submerged), and outlet velocity from the profile's depth at the outlet
+    (normal depth on steep barrels). Assumes box culverts, square-edge
+    headwall inlet (ke = 0.5), constant tailwater, no roadway overtopping.
+    Verified against real HY-8 for CU-JSS-01 at 10 m³/s: headwater elevation
+    within 0.02 m and outlet velocity within 0.01 m/s of HY-8's values.
   - *Extract from loaded file* reads HY-8's own computed rating-curve
     results (headwater elevation, outlet velocity) from a `.hy8` file that
     HY-8 has analyzed and saved, interpolated at the design flow. Normal

@@ -1,12 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { criticalDepth, normalDepth, inletControlHW, outletControlHW, analyzeBoxCulvert } from '../src/hy8/hydraulics.js';
+import {
+  criticalDepth,
+  normalDepth,
+  inletControlHW,
+  outletControlHW,
+  outletControlFullFlow,
+  analyzeBoxCulvert,
+} from '../src/hy8/hydraulics.js';
 
 // Reference: 8.2021 ft (2.5 m) square box, one barrel.
 
 test('criticalDepth matches the rectangular-section formula', () => {
-  // yc = (q'^2 / g)^(1/3); q' = 100 cfs / 8.2021 ft = 12.192 cfs/ft
-  // yc = (12.192^2 / 32.2)^(1/3) = 1.6607 ft
   const yc = criticalDepth(100, 8.2021, 8.2021);
   assert.equal(yc.toFixed(4), Math.cbrt(((100 / 8.2021) ** 2) / 32.2).toFixed(4));
   assert.ok(yc > 1.6 && yc < 1.7);
@@ -35,7 +40,7 @@ test('normalDepth returns null for non-positive slope and caps at the rise when 
 });
 
 test('inletControlHW submerged form matches the HDS-5 equation directly', () => {
-  // Pick q so Q/(A*sqrt(D)) > 4.0 (fully submerged): ratio = 5
+  // ratio = 5 (fully submerged): the regression dominates the energy floor.
   const b = 8.2021;
   const d = 8.2021;
   const area = b * d;
@@ -43,6 +48,17 @@ test('inletControlHW submerged form matches the HDS-5 equation directly', () => 
   const s = 0.009;
   const expected = d * (0.04 * 25 + 0.8 - 0.5 * s);
   assert.equal(inletControlHW(q, b, d, s).toFixed(6), expected.toFixed(6));
+});
+
+test('inletControlHW at low flow equals the energy-based value (HY-8 behavior)', () => {
+  // CU-JSS-01 per barrel: the regression sits below yc + 1.5*Vc^2/2g there.
+  const q = 353.146667 / 6;
+  const b = 8.2021;
+  const d = 8.2021;
+  const yc = criticalDepth(q, b, d);
+  const vc = q / (b * yc);
+  const expected = yc + (1.5 * vc * vc) / (2 * 32.2);
+  assert.equal(inletControlHW(q, b, d, 0.008991).toFixed(6), expected.toFixed(6));
 });
 
 test('inletControlHW is continuous and increasing across the transition zone', () => {
@@ -55,7 +71,7 @@ test('inletControlHW is continuous and increasing across the transition zone', (
   assert.ok(at(3.9) < at(4.1));
 });
 
-test('outletControlHW equals ho + H - LS computed by hand', () => {
+test('outletControlFullFlow equals ho + H - LS computed by hand', () => {
   const b = 8.2021;
   const d = 8.2021;
   const n = 0.015;
@@ -69,12 +85,40 @@ test('outletControlHW equals ho + H - LS computed by hand', () => {
   const yc = criticalDepth(q, b, d);
   const ho = Math.max(0, (yc + d) / 2);
   const expected = ho + H - L * s;
-  assert.equal(outletControlHW(q, b, d, n, L, s, 0).toFixed(6), expected.toFixed(6));
+  assert.equal(outletControlFullFlow(q, b, d, n, L, s, 0).toFixed(6), expected.toFixed(6));
 });
 
-test('analyzeBoxCulvert produces a coherent result for a CU-JSS-01-like culvert', () => {
-  // CU-JSS-01 post-import: 6 barrels of 2.5m box, L=72.3m, USIL -355.29m,
-  // DSIL -355.94m (all in ft here), design flow 10 cms = 353.147 cfs.
+test('outletControlHW on a steep low-tailwater barrel equals the inlet energy head', () => {
+  // Steep (yn < yc): downstream conditions cannot raise the pool, so the
+  // profile-based outlet control collapses to yc + (1+ke) Vc^2/2g.
+  const q = 353.146667 / 6;
+  const b = 8.2021;
+  const d = 8.2021;
+  const yc = criticalDepth(q, b, d);
+  const vc = q / (b * yc);
+  const expected = yc + (1.5 * vc * vc) / (2 * 32.2);
+  assert.equal(outletControlHW(q, b, d, 0.015, 237.2, 0.008991, 0).toFixed(6), expected.toFixed(6));
+});
+
+test('outletControlHW grows with culvert length on a horizontal barrel (friction via profile)', () => {
+  // Horizontal slope: backwater profile accumulates friction, so a longer
+  // barrel must produce a higher outlet-control headwater.
+  const q = 200;
+  const hwShort = outletControlHW(q, 8.2021, 8.2021, 0.015, 50, 0, 0);
+  const hwLong = outletControlHW(q, 8.2021, 8.2021, 0.015, 500, 0, 0);
+  assert.ok(hwLong > hwShort, `${hwLong} should exceed ${hwShort}`);
+});
+
+test('outletControlHW uses the full-flow equation when tailwater submerges the crown', () => {
+  const q = 500;
+  const tw = 10; // above the 8.2 ft rise
+  const viaDispatch = outletControlHW(q, 8.2021, 8.2021, 0.015, 237.2, 0.009, tw);
+  const direct = outletControlFullFlow(q, 8.2021, 8.2021, 0.015, 237.2, 0.009, tw);
+  assert.equal(viaDispatch, direct);
+});
+
+test('analyzeBoxCulvert matches HY-8 for CU-JSS-01 (verified against real HY-8 output)', () => {
+  // HY-8 (Windows, user-verified): HW elev -354.68 m, inlet control, 2.38 m/s.
   const r = analyzeBoxCulvert({
     qTotal: 353.146667,
     span: 8.2021,
@@ -86,19 +130,10 @@ test('analyzeBoxCulvert produces a coherent result for a CU-JSS-01-like culvert'
     dsil: -1167.782152,
     twElevation: -1167.782152,
   });
-
-  assert.ok(['inlet', 'outlet'].includes(r.control));
-  assert.ok(r.hwDepth > 0, 'headwater depth must be positive');
-  assert.ok(r.hwDepth < r.qPerBarrel, 'sanity ceiling');
-  assert.equal(r.hwElevation.toFixed(6), (-1165.649606 + r.hwDepth).toFixed(6));
-  assert.equal(r.hwOverD.toFixed(6), (r.hwDepth / 8.2021).toFixed(6));
-  // ~58.9 cfs per barrel in a 8.2 ft box is a shallow flow: depths under 2 ft.
-  assert.ok(r.criticalDepth > 0 && r.criticalDepth < 2);
-  assert.ok(r.normalDepth > 0 && r.normalDepth < 2);
-  assert.ok(r.outletVelocity > 0);
-  // Steep slope (yn < yc) means supercritical: outlet faster than critical velocity.
-  const vc = r.qPerBarrel / (8.2021 * r.criticalDepth);
-  if (r.normalDepth < r.criticalDepth) assert.ok(r.outletVelocity >= vc - 1e-9);
+  const ftToM = (x) => x * 0.3048;
+  assert.equal(r.control, 'inlet');
+  assert.ok(Math.abs(ftToM(r.hwElevation) - -354.68) < 0.02, `HW elev ${ftToM(r.hwElevation)} should be within 2 cm of -354.68`);
+  assert.ok(Math.abs(ftToM(r.outletVelocity) - 2.38) < 0.02, `outlet velocity ${ftToM(r.outletVelocity)} should be within 0.02 of 2.38`);
 });
 
 test('analyzeBoxCulvert splits flow across barrels', () => {
@@ -116,4 +151,23 @@ test('analyzeBoxCulvert splits flow across barrels', () => {
   const six = analyzeBoxCulvert({ ...base, barrels: 6 });
   assert.equal(six.qPerBarrel.toFixed(6), (one.qPerBarrel / 6).toFixed(6));
   assert.ok(six.hwDepth < one.hwDepth, 'more barrels must lower the headwater');
+});
+
+test('outlet velocity approaches the normal-depth velocity on a long steep barrel', () => {
+  const q = 353.146667 / 6;
+  const b = 8.2021;
+  const yn = normalDepth(q, b, 8.2021, 0.015, 0.008991);
+  const r = analyzeBoxCulvert({
+    qTotal: 353.146667,
+    span: b,
+    rise: 8.2021,
+    barrels: 6,
+    n: 0.015,
+    length: 237.204724,
+    usil: -1165.649606,
+    dsil: -1167.782152,
+    twElevation: -1167.782152,
+  });
+  const vAtYn = q / (b * yn);
+  assert.ok(Math.abs(r.outletVelocity - vAtYn) / vAtYn < 0.02, `${r.outletVelocity} vs ${vAtYn}`);
 });

@@ -180,6 +180,23 @@ test('Export summary downloads a SI CSV named after the .hy8 file', () => {
   assert.ok(downloads[0].text.includes('CU-JSS-01'));
 });
 
+test('setCsvRows (the .xlsx path) feeds the same mapping pipeline as CSV text', async () => {
+  const { makeXlsx } = await import('./helpers/makeXlsx.js');
+  const { parseXlsxRows } = await import('../src/hy8/xlsx.js');
+  const { root, app } = makeApp();
+
+  const buf = makeXlsx([
+    ['Name', 'Comment', 'Station', 'Type', 'Cells', 'Diameter (mm)', 'Width (m)', 'Rise (m)', 'Length (m)', 'Slope (%)', 'Skew', 'USIL (m)', 'DSIL (m)'],
+    ['CU-JSS-01', '-', '-2+-601', 'Box', 6, '-', 2.5, 2.5, 72.3, 0.9, 30.2, -355.29, -355.94],
+  ]);
+  app.setCsvRows(await parseXlsxRows(buf), 'Table1.xlsx');
+  app.setHy8Text(hy8Fixture, 'Section_1.hy8');
+
+  assert.equal(app.state.mapResult.pairs.length, 1);
+  assert.equal(app.state.mapResult.pairs[0].culvert.name, 'CU-JSS-01');
+  assert.ok(root.querySelector('#csvFileLabel').textContent.includes('Table1.xlsx'));
+});
+
 test('changing the mapping clears a stale summary', () => {
   const { root, app } = makeApp();
   app.setCsvText(csvFixture, 'Table1.csv');

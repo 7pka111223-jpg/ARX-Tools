@@ -1,5 +1,6 @@
 import { parseHy8, serializeHy8 } from '../hy8File.js';
-import { parseCulvertCsv } from '../csvCulverts.js';
+import { parseCulvertCsv, rowsToCulverts } from '../csvCulverts.js';
+import { parseXlsxRows, rowsToText } from '../xlsx.js';
 import { mapCulverts } from '../mapper.js';
 import { diffPair } from '../differ.js';
 import { generateDifferencesCsv } from '../diffExport.js';
@@ -29,8 +30,8 @@ export function initApp(root, { download = defaultDownload } = {}) {
         <span class="card__hint">Nothing is uploaded — files are read locally in this browser</span>
       </div>
       <div class="field">
-        <label for="csvInput">Culvert schedule CSV (SI units)</label>
-        <input type="file" id="csvInput" accept=".csv">
+        <label for="csvInput">Culvert schedule — CSV or Excel .xlsx (SI units)</label>
+        <input type="file" id="csvInput" accept=".csv,.xlsx">
         <span class="field-hint" id="csvFileLabel">No file loaded</span>
       </div>
       <div class="field">
@@ -92,8 +93,8 @@ export function initApp(root, { download = defaultDownload } = {}) {
       </div>
       <textarea id="flowText" rows="6" placeholder="CU-JSS-01, 10"></textarea>
       <div class="field">
-        <label for="flowFileInput">Or load a flow CSV</label>
-        <input type="file" id="flowFileInput" accept=".csv,.txt">
+        <label for="flowFileInput">Or load a flow file (CSV or Excel .xlsx)</label>
+        <input type="file" id="flowFileInput" accept=".csv,.txt,.xlsx">
       </div>
       <p id="flowUnmatched" class="hint"></p>
     </section>
@@ -226,6 +227,13 @@ export function initApp(root, { download = defaultDownload } = {}) {
     recomputeMapping();
   }
 
+  function setCsvRows(rows, fileName) {
+    state.csvFileName = fileName;
+    els.csvFileLabel.textContent = fileName;
+    state.csvRows = rowsToCulverts(rows);
+    recomputeMapping();
+  }
+
   function setHy8Text(text, fileName) {
     state.hy8FileName = fileName;
     els.hy8FileLabel.textContent = fileName;
@@ -275,8 +283,19 @@ export function initApp(root, { download = defaultDownload } = {}) {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => setCsvText(reader.result, file.name);
-    reader.readAsText(file, 'iso-8859-1');
+    if (/\.xlsx$/i.test(file.name)) {
+      reader.onload = () => {
+        parseXlsxRows(reader.result)
+          .then((rows) => setCsvRows(rows, file.name))
+          .catch((err) => {
+            els.csvFileLabel.textContent = `Could not read ${file.name}: ${err.message}`;
+          });
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload = () => setCsvText(reader.result, file.name);
+      reader.readAsText(file, 'iso-8859-1');
+    }
   });
 
   els.hy8Input.addEventListener('change', (e) => {
@@ -310,11 +329,25 @@ export function initApp(root, { download = defaultDownload } = {}) {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      els.flowText.value = reader.result;
-      updateFlowPreview();
-    };
-    reader.readAsText(file);
+    if (/\.xlsx$/i.test(file.name)) {
+      reader.onload = () => {
+        parseXlsxRows(reader.result)
+          .then((rows) => {
+            els.flowText.value = rowsToText(rows);
+            updateFlowPreview();
+          })
+          .catch((err) => {
+            els.flowUnmatched.textContent = `Could not read ${file.name}: ${err.message}`;
+          });
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload = () => {
+        els.flowText.value = reader.result;
+        updateFlowPreview();
+      };
+      reader.readAsText(file);
+    }
   });
 
   els.importBtn.addEventListener('click', () => {
@@ -384,7 +417,7 @@ export function initApp(root, { download = defaultDownload } = {}) {
 
   render();
 
-  return { state, setCsvText, setHy8Text, recomputeMapping, runImport };
+  return { state, setCsvText, setCsvRows, setHy8Text, recomputeMapping, runImport };
 }
 
 function downloadName(originalName, suffix) {
