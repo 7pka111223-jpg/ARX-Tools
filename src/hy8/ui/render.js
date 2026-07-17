@@ -40,6 +40,21 @@ export function renderSummaryTable(rows) {
   </table>`;
 }
 
+export function renderReportTable(rows) {
+  const body = rows
+    .map((r) => {
+      if (r.error) {
+        return `<tr><td>${escapeHtml(r.name)}</td><td>${numCell(r.designFlowCms)}</td><td colspan="6" class="hint">${escapeHtml(r.error)}</td></tr>`;
+      }
+      return `<tr><td>${escapeHtml(r.name)}</td><td>${numCell(r.designFlowCms)}</td><td>${numCell(r.hwElevationM)}</td><td>${numCell(r.hwOverD)}</td><td>${numCell(r.normalDepthM)}</td><td>${numCell(r.inletControlDepthM)}</td><td>${numCell(r.outletControlDepthM)}</td><td>${numCell(r.outletVelocityMs)}</td></tr>`;
+    })
+    .join('');
+  return `<table class="diff-table" id="reportResultTable">
+    <thead><tr><th>Culvert</th><th>Q (m³/s)</th><th>HW elevation (m)</th><th>HW/D</th><th>Normal depth (m)</th><th>Inlet control depth (m)</th><th>Outlet control depth (m)</th><th>Outlet velocity (m/s)</th></tr></thead>
+    <tbody>${body}</tbody>
+  </table>`;
+}
+
 export function renderDiffSection(culvertLabel, diffs) {
   const rows = diffs
     .map(

@@ -197,6 +197,46 @@ test('setCsvRows (the .xlsx path) feeds the same mapping pipeline as CSV text', 
   assert.ok(root.querySelector('#csvFileLabel').textContent.includes('Table1.xlsx'));
 });
 
+test('DOCX report extraction renders the design-flow results and exports CSV', async () => {
+  const { readFileSync } = await import('node:fs');
+  const docxBuf = readFileSync(join(__dirname, 'fixtures/hy8/Section_3_report.docx'));
+  const hy8Section3 = readFileSync(join(__dirname, 'fixtures/hy8/Section_3.hy8'), 'utf8');
+
+  const { root, app, downloads } = makeApp();
+  assert.equal(root.querySelector('#docxInput').disabled, true, 'docx input requires a loaded .hy8');
+
+  app.setHy8Text(hy8Section3, 'Section_3.hy8');
+  assert.equal(root.querySelector('#docxInput').disabled, false);
+
+  await app.setReportDocx(docxBuf.buffer.slice(docxBuf.byteOffset, docxBuf.byteOffset + docxBuf.byteLength), 'Section_3_report.docx');
+
+  const table = root.querySelector('#reportResultTable');
+  assert.ok(table, 'report table should render');
+  assert.equal(table.querySelectorAll('tbody tr').length, 44);
+  assert.ok(root.querySelector('#reportStatusMsg').textContent.includes('44 culvert(s) extracted'));
+
+  root.querySelector('#exportReportBtn').dispatchEvent(new window.Event('click'));
+  assert.equal(downloads.length, 1);
+  assert.equal(downloads[0].name, 'Section_3_report_results.csv');
+  assert.ok(downloads[0].text.startsWith('Culvert Name,Design flow (m3/s),Headwater elevation (m),HW/D'));
+  assert.ok(downloads[0].text.includes('CU-JAS-06'));
+});
+
+test('loading a new .hy8 clears a stale report extraction', async () => {
+  const { readFileSync } = await import('node:fs');
+  const docxBuf = readFileSync(join(__dirname, 'fixtures/hy8/Section_3_report.docx'));
+  const hy8Section3 = readFileSync(join(__dirname, 'fixtures/hy8/Section_3.hy8'), 'utf8');
+
+  const { root, app } = makeApp();
+  app.setHy8Text(hy8Section3, 'Section_3.hy8');
+  await app.setReportDocx(docxBuf.buffer.slice(docxBuf.byteOffset, docxBuf.byteOffset + docxBuf.byteLength), 'Section_3_report.docx');
+  assert.ok(root.querySelector('#reportResultTable'));
+
+  app.setHy8Text(hy8Fixture, 'Section_1.hy8');
+  assert.equal(root.querySelector('#reportResultTable'), null);
+  assert.equal(root.querySelector('#exportReportBtn').disabled, true);
+});
+
 test('changing the mapping clears a stale summary', () => {
   const { root, app } = makeApp();
   app.setCsvText(csvFixture, 'Table1.csv');

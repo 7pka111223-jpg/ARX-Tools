@@ -8,7 +8,16 @@ import { parseFlowInput, applyFlows } from '../flowUpdater.js';
 import { applyGeometryImport } from '../applyImport.js';
 import { buildComputedSummary, buildExtractedSummary } from '../summary.js';
 import { generateSummaryCsv } from '../summaryExport.js';
-import { renderMappingRow, renderUnmatchedCsvRow, renderUnmatchedHy8Row, renderDiffSection, renderSummaryTable } from './render.js';
+import { parseDocxSummaryTables } from '../docx.js';
+import { extractReportResults, generateReportCsv } from '../reportExtract.js';
+import {
+  renderMappingRow,
+  renderUnmatchedCsvRow,
+  renderUnmatchedHy8Row,
+  renderDiffSection,
+  renderSummaryTable,
+  renderReportTable,
+} from './render.js';
 
 export function initApp(root, { download = defaultDownload } = {}) {
   const state = {
@@ -21,6 +30,7 @@ export function initApp(root, { download = defaultDownload } = {}) {
     mapResult: { pairs: [], unmatchedCsv: [], unmatchedHy8: [] },
     summaryRows: null,
     summarySource: null,
+    reportRows: null,
   };
 
   root.innerHTML = `
@@ -124,6 +134,21 @@ export function initApp(root, { download = defaultDownload } = {}) {
       <div id="summaryContainer"></div>
       <p id="summaryStatusMsg" class="status"></p>
     </section>
+
+    <section class="card">
+      <div class="card__header">
+        <h2 class="card__title">8. HY-8 report extraction (DOCX)</h2>
+        <span class="card__hint">Pull each culvert's design-flow results out of an HY-8 culvert analysis report</span>
+      </div>
+      <div class="field">
+        <label for="docxInput">HY-8 culvert analysis report (.docx)</label>
+        <input type="file" id="docxInput" accept=".docx" disabled>
+        <span class="field-hint">Load the matching .hy8 file first — the design flow for each culvert is read from it.</span>
+      </div>
+      <button id="exportReportBtn" class="btn" disabled>Export report results as CSV</button>
+      <div id="reportContainer"></div>
+      <p id="reportStatusMsg" class="status"></p>
+    </section>
   `;
 
   const els = {
@@ -152,6 +177,10 @@ export function initApp(root, { download = defaultDownload } = {}) {
     exportSummaryBtn: root.querySelector('#exportSummaryBtn'),
     summaryContainer: root.querySelector('#summaryContainer'),
     summaryStatusMsg: root.querySelector('#summaryStatusMsg'),
+    docxInput: root.querySelector('#docxInput'),
+    exportReportBtn: root.querySelector('#exportReportBtn'),
+    reportContainer: root.querySelector('#reportContainer'),
+    reportStatusMsg: root.querySelector('#reportStatusMsg'),
   };
 
   function recomputeMapping() {
@@ -213,6 +242,8 @@ export function initApp(root, { download = defaultDownload } = {}) {
     els.computeSummaryBtn.disabled = !state.hy8Doc;
     els.extractSummaryBtn.disabled = !state.hy8Doc;
     els.exportSummaryBtn.disabled = !state.summaryRows;
+    els.docxInput.disabled = !state.hy8Doc;
+    els.exportReportBtn.disabled = !state.reportRows;
   }
 
   function renderSummary() {
@@ -238,6 +269,10 @@ export function initApp(root, { download = defaultDownload } = {}) {
     state.hy8FileName = fileName;
     els.hy8FileLabel.textContent = fileName;
     state.hy8Doc = parseHy8(text);
+    // Any previously extracted report belonged to the old file.
+    state.reportRows = null;
+    els.reportContainer.innerHTML = '';
+    els.reportStatusMsg.textContent = '';
     recomputeMapping();
   }
 
@@ -415,9 +450,56 @@ export function initApp(root, { download = defaultDownload } = {}) {
     }
   });
 
+  // Extracts the design-flow results from an HY-8 report .docx, using the
+  // loaded .hy8 (not the imported copy) — the report was generated from it.
+  async function setReportDocx(arrayBuffer, fileName) {
+    if (!state.hy8Doc) {
+      els.reportStatusMsg.textContent = 'Load the matching .hy8 file first.';
+      els.reportStatusMsg.className = 'status status--error';
+      return;
+    }
+    const tables = await parseDocxSummaryTables(arrayBuffer);
+    if (!tables.length) throw new Error('no "Culvert Summary Table" found in this document');
+    state.reportRows = extractReportResults(tables, state.hy8Doc);
+    els.reportContainer.innerHTML = renderReportTable(state.reportRows);
+    els.exportReportBtn.disabled = false;
+    const extracted = state.reportRows.filter((r) => !r.error).length;
+    const flagged = state.reportRows.length - extracted;
+    els.reportStatusMsg.textContent =
+      `${fileName}: ${extracted} culvert(s) extracted at their design flow` +
+      (flagged ? `, ${flagged} flagged (see notes)` : '') + '.';
+    els.reportStatusMsg.className = 'status status--success';
+  }
+
+  els.docxInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setReportDocx(reader.result, file.name).catch((err) => {
+        els.reportStatusMsg.textContent = `Could not read ${file.name}: ${err.message}`;
+        els.reportStatusMsg.className = 'status status--error';
+      });
+    };
+    reader.readAsArrayBuffer(file);
+  });
+
+  els.exportReportBtn.addEventListener('click', () => {
+    try {
+      const csv = generateReportCsv(state.reportRows);
+      const name = downloadName(state.hy8FileName, '_report_results.csv');
+      download(name, csv, 'text/csv');
+      els.reportStatusMsg.textContent = `Downloaded ${name}.`;
+      els.reportStatusMsg.className = 'status status--success';
+    } catch (err) {
+      els.reportStatusMsg.textContent = `Export failed: ${err.message}`;
+      els.reportStatusMsg.className = 'status status--error';
+    }
+  });
+
   render();
 
-  return { state, setCsvText, setCsvRows, setHy8Text, recomputeMapping, runImport };
+  return { state, setCsvText, setCsvRows, setHy8Text, setReportDocx, recomputeMapping, runImport };
 }
 
 function downloadName(originalName, suffix) {

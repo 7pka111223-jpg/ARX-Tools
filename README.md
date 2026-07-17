@@ -75,6 +75,16 @@ list accept CSV or `.xlsx` (first worksheet; legacy `.xls` is not supported).
     and critical depth aren't stored in the file, so those two columns are
     always computed from geometry. A file that HY-8 hasn't analyzed yet is
     flagged per row rather than showing zeros as results.
+- **HY-8 report extraction (DOCX)**: attach an HY-8 "Culvert Analysis
+  Report" (.docx) together with the matching `.hy8` file, and the tool pulls
+  each culvert's results at its design flow — headwater elevation, HW/D,
+  normal depth, inlet control depth, outlet control depth, and outlet
+  velocity — from the per-culvert "Culvert Summary Table" in the report.
+  Culverts are matched by name and the design flow is read from the `.hy8`
+  file's `DISCHARGERANGE`; the results table renders in SI (reports printed
+  in either unit system are detected and converted) and exports as
+  `<name>_report_results.csv`. Missing tables, missing columns, or a design
+  flow absent from the report's flow rows are flagged per row.
 - **Units**: the whole UI — file labels, the differences panel, the culvert
   summary, and the exported CSVs — is SI throughout (meters, m³/s). The
   `.hy8` file itself always stores US customary units (feet, cfs) regardless
