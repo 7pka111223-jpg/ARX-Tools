@@ -40,6 +40,29 @@ export function renderSummaryTable(rows) {
   </table>`;
 }
 
+export function renderFullAnalysis(crossings) {
+  return crossings
+    .map((c) => {
+      const label = `${c.name}${c.crossingName ? ` (${c.crossingName})` : ''}`;
+      if (c.error) {
+        return `<details class="analysis-block"><summary>${escapeHtml(label)} — ${escapeHtml(c.error)}</summary></details>`;
+      }
+      const body = c.rows
+        .map(
+          (r) =>
+            `<tr${r.isDesign ? ' class="is-design"' : ''}><td>${numCell(r.flowCms)}${r.isDesign ? ' ★' : ''}</td><td>${numCell(r.hwElevationM)}</td><td>${numCell(r.hwOverD)}</td><td>${numCell(r.inletControlDepthM)}</td><td>${numCell(r.outletControlDepthM)}</td><td>${numCell(r.normalDepthM)}</td><td>${numCell(r.criticalDepthM)}</td><td>${numCell(r.outletDepthM)}</td><td>${numCell(r.outletVelocityMs)}</td><td>${escapeHtml(r.control || '—')}</td></tr>`
+        )
+        .join('');
+      return `<details class="analysis-block"><summary>${escapeHtml(label)}</summary>
+      <table class="diff-table analysis-table">
+        <thead><tr><th>Q (m³/s)</th><th>HW elev (m)</th><th>HW/D</th><th>Inlet ctrl (m)</th><th>Outlet ctrl (m)</th><th>Normal depth (m)</th><th>Critical depth (m)</th><th>Outlet depth (m)</th><th>Outlet velocity (m/s)</th><th>Control</th></tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </details>`;
+    })
+    .join('');
+}
+
 export function renderReportTable(rows) {
   const body = rows
     .map((r) => {

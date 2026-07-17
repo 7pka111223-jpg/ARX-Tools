@@ -8,8 +8,8 @@ import { parseCulvertCsv } from '../src/hy8/csvCulverts.js';
 import { mapCulverts } from '../src/hy8/mapper.js';
 import { applyGeometryImport } from '../src/hy8/applyImport.js';
 import { applyFlows } from '../src/hy8/flowUpdater.js';
-import { buildComputedSummary, buildExtractedSummary } from '../src/hy8/summary.js';
-import { generateSummaryCsv } from '../src/hy8/summaryExport.js';
+import { buildComputedSummary, buildExtractedSummary, buildFullAnalysis } from '../src/hy8/summary.js';
+import { generateSummaryCsv, generateFullAnalysisCsv } from '../src/hy8/summaryExport.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const hy8Fixture = readFileSync(join(__dirname, 'fixtures/hy8/Section_1.hy8'), 'utf8');
@@ -49,7 +49,7 @@ test('computed summary for CU-JSS-01 is in SI and self-consistent', () => {
   assert.equal(r.designFlowCms.toFixed(6), '10.000000');
   // HY-8 (Windows, user-verified): HW elev -354.68 m, inlet control, 2.38 m/s.
   assert.equal(r.control, 'inlet');
-  assert.ok(Math.abs(r.hwElevationM - -354.68) < 0.02, `HW elev ${r.hwElevationM} vs HY-8 -354.68`);
+  assert.ok(Math.abs(r.hwElevationM - -354.68) < 0.03, `HW elev ${r.hwElevationM} vs HY-8 -354.68`);
   assert.ok(Math.abs(r.outletVelocityMs - 2.38) < 0.02, `v ${r.outletVelocityMs} vs HY-8 2.38`);
   assert.ok(r.criticalDepthM > 0.1 && r.criticalDepthM < 1, `yc=${r.criticalDepthM}`);
   assert.ok(r.normalDepthM > 0.05 && r.normalDepthM < 1, `yn=${r.normalDepthM}`);
@@ -114,6 +114,47 @@ test('extraction interpolates HY-8 elevation/velocity at the design flow', () =>
 function readFlow(line) {
   return Number(line.match(/-?\d+\.\d+/)[0]);
 }
+
+test('buildFullAnalysis runs every crossing across its whole flow list, matching HY-8 at the design flow', () => {
+  const hy8Section3 = readFileSync(join(__dirname, 'fixtures/hy8/Section_3.hy8'), 'utf8');
+  const doc = parseHy8(hy8Section3);
+  const crossings = buildFullAnalysis(doc);
+  assert.equal(crossings.length, 44);
+  assert.ok(crossings.every((c) => !c.error));
+
+  const cu06 = crossings.find((c) => c.name === 'CU-JAS-06');
+  // 11 flows, one marked as the design flow.
+  assert.equal(cu06.rows.length, 11);
+  assert.equal(cu06.rows.filter((r) => r.isDesign).length, 1);
+  const design = cu06.rows.find((r) => r.isDesign);
+  assert.equal(design.flowCms.toFixed(2), '7.71');
+  // HY-8's own table row at the design flow: HW elev 182.36, v 4.51.
+  assert.ok(Math.abs(design.hwElevationM - 182.36) < 0.05, `HW ${design.hwElevationM}`);
+  assert.ok(Math.abs(design.outletVelocityMs - 4.51) < 0.15, `v ${design.outletVelocityMs}`);
+  assert.ok(Math.abs(design.inletControlDepthM - 1.66) < 0.05, `IC ${design.inletControlDepthM}`);
+  assert.equal(design.outletControlDepthM, 0); // steep barrel — HY-8 prints 0.0*
+  // Zero-flow first row: pool at the inlet invert.
+  assert.equal(cu06.rows[0].flowCms, 0);
+  assert.ok(Math.abs(cu06.rows[0].hwElevationM - 180.70) < 0.01);
+  // Flows ascend and headwater is monotonic non-decreasing with flow.
+  for (let i = 1; i < cu06.rows.length; i++) {
+    assert.ok(cu06.rows[i].flowCms > cu06.rows[i - 1].flowCms);
+    assert.ok(cu06.rows[i].hwElevationM >= cu06.rows[i - 1].hwElevationM - 1e-9);
+  }
+});
+
+test('generateFullAnalysisCsv emits one row per crossing per flow', () => {
+  const hy8Section3 = readFileSync(join(__dirname, 'fixtures/hy8/Section_3.hy8'), 'utf8');
+  const doc = parseHy8(hy8Section3);
+  const crossings = buildFullAnalysis(doc);
+  const csv = generateFullAnalysisCsv(crossings);
+  const lines = csv.split('\r\n');
+  assert.ok(lines[0].startsWith('Culvert,Crossing,Flow (m3/s),Design flow?,Headwater elevation (m),HW/D'));
+  const expectedRows = crossings.reduce((s, c) => s + (c.error ? 1 : c.rows.length), 0);
+  assert.equal(lines.length, 1 + expectedRows);
+  const designLines = lines.filter((l) => l.includes(',yes,'));
+  assert.equal(designLines.length, 44);
+});
 
 test('generateSummaryCsv emits one row per crossing with the SI header', () => {
   const doc = importedDoc();

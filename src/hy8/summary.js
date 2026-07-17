@@ -74,6 +74,40 @@ export function buildComputedSummary(doc) {
   });
 }
 
+// Full performance table per crossing — the analysis run at every flow in
+// the crossing's DISCHARGEXYDESIGN list (the same flows HY-8's own summary
+// tables use: min to max with the design flow in place).
+export function buildFullAnalysis(doc) {
+  return doc.crossings.map((crossing) => {
+    const geom = readGeometry(doc, crossing);
+    const base = { name: geom.name, crossingName: geom.crossingName, designFlowCms: cfsToCms(geom.qTotal) };
+    if (geom.shape !== BOX_SHAPE) return { ...base, error: 'unsupported culvert shape (box only)', rows: [] };
+
+    const flows = crossing.dischargeXYDesignYLines
+      .map((lineIndex) => readFloats(doc, lineIndex)[0])
+      .filter((q, i, arr) => i === 0 || q !== arr[i - 1]); // drop consecutive duplicates
+    if (!flows.some((q) => q > 0)) return { ...base, error: 'no flow list in the file', rows: [] };
+
+    const rows = flows.map((qTotal) => {
+      const us = analyzeBoxCulvert({ ...geom, qTotal });
+      return {
+        flowCms: cfsToCms(qTotal),
+        isDesign: Math.abs(qTotal - geom.qTotal) < 1e-6,
+        hwElevationM: ftToM(us.hwElevation),
+        hwOverD: us.hwOverD,
+        inletControlDepthM: ftToM(us.inletControlDepth),
+        outletControlDepthM: ftToM(us.outletControlDepth),
+        normalDepthM: us.normalDepth === null ? null : ftToM(us.normalDepth),
+        criticalDepthM: ftToM(us.criticalDepth),
+        outletDepthM: ftToM(us.outletDepth),
+        outletVelocityMs: ftToM(us.outletVelocity),
+        control: us.control,
+      };
+    });
+    return { ...base, error: null, rows };
+  });
+}
+
 // Linear interpolation of HY-8's stored rating curve at flow q (cfs).
 // Returns null when the curve is missing or q is outside its range.
 function interpolateRating(doc, crossing, q) {

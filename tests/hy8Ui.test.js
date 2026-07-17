@@ -237,6 +237,31 @@ test('loading a new .hy8 clears a stale report extraction', async () => {
   assert.equal(root.querySelector('#exportReportBtn').disabled, true);
 });
 
+test('Analyze all crossings renders collapsible per-crossing flow tables and exports CSV', async () => {
+  const { readFileSync } = await import('node:fs');
+  const hy8Section3 = readFileSync(join(__dirname, 'fixtures/hy8/Section_3.hy8'), 'utf8');
+
+  const { root, app, downloads } = makeApp();
+  assert.equal(root.querySelector('#analyzeAllBtn').disabled, true);
+  app.setHy8Text(hy8Section3, 'Section_3.hy8');
+  assert.equal(root.querySelector('#analyzeAllBtn').disabled, false);
+
+  root.querySelector('#analyzeAllBtn').dispatchEvent(new window.Event('click'));
+
+  const blocks = root.querySelectorAll('#analysisContainer details.analysis-block');
+  assert.equal(blocks.length, 44);
+  assert.ok(root.querySelector('#summaryStatusMsg').textContent.includes('44 crossing(s)'));
+  // Each expanded table has 11 flow rows, one highlighted as the design flow.
+  const firstTable = blocks[0].querySelector('table');
+  assert.equal(firstTable.querySelectorAll('tbody tr').length, 11);
+  assert.equal(firstTable.querySelectorAll('tbody tr.is-design').length, 1);
+
+  root.querySelector('#exportAnalysisBtn').dispatchEvent(new window.Event('click'));
+  assert.equal(downloads.length, 1);
+  assert.equal(downloads[0].name, 'Section_3_full_analysis.csv');
+  assert.ok(downloads[0].text.startsWith('Culvert,Crossing,Flow (m3/s),Design flow?'));
+});
+
 test('changing the mapping clears a stale summary', () => {
   const { root, app } = makeApp();
   app.setCsvText(csvFixture, 'Table1.csv');

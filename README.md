@@ -67,8 +67,17 @@ list accept CSV or `.xlsx` (first worksheet; legacy `.xls` is not supported).
     submerged), and outlet velocity from the profile's depth at the outlet
     (normal depth on steep barrels). Assumes box culverts, square-edge
     headwall inlet (ke = 0.5), constant tailwater, no roadway overtopping.
-    Verified against real HY-8 for CU-JSS-01 at 10 m³/s: headwater elevation
-    within 0.02 m and outlet velocity within 0.01 m/s of HY-8's values.
+    Validated against HY-8's own summary tables (CU-JAS-06, all flows below
+    roadway overtopping): headwater elevations within 0.16 m, exact at the
+    design flow. Deep submergence follows HY-8's orifice extrapolation.
+    Roadway overtopping is not modeled — above the overtopping flow HY-8
+    caps the headwater at the roadway while this analysis keeps rising.
+  - *Analyze all crossings (full flow table)* runs the same analysis at
+    every flow in each crossing's flow list (as HY-8's "Analyze" does),
+    producing a per-crossing performance table — headwater elevation, HW/D,
+    inlet/outlet control depths, normal/critical/outlet depth, outlet
+    velocity — with the design-flow row highlighted, and a CSV export of
+    all crossings × all flows.
   - *Extract from loaded file* reads HY-8's own computed rating-curve
     results (headwater elevation, outlet velocity) from a `.hy8` file that
     HY-8 has analyzed and saved, interpolated at the design flow. Normal

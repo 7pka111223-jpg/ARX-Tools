@@ -1,23 +1,24 @@
 // FHWA HDS-5 culvert hydraulics for BOX culverts, computed in US customary
 // units (the .hy8 file's native units — feet, cfs), following HY-8's method:
 //
-//  - Inlet control: HDS-5 Chart 8 nomograph regression equations, with an
-//    energy-based floor (yc + (1+ke)·Vc²/2g). At low flows the regression is
-//    below its fitted range and under-predicts; HY-8's reported inlet-control
-//    headwater tracks the energy value there (verified against HY-8 for
-//    CU-JSS-01: HY-8 -354.68 m vs this method -354.67 m).
+//  - Inlet control: the HDS-5 Chart 8 nomograph regression equations,
+//    exactly as HY-8 evaluates them (validated against HY-8's own summary
+//    table for CU-JAS-06: headwater elevations match within ~0.01-0.07 m
+//    across the non-overtopping flow range, exactly at several rows).
 //  - Outlet control: gradually-varied-flow water-surface profile through the
-//    barrel (direct step), not the full-flow friction approximation — that
-//    approximation is only valid flowing full and over-predicted headwater by
-//    ~0.2 m on shallow flows. Full-flow friction is used only when the
-//    tailwater submerges the crown or the profile reaches it.
+//    barrel (direct step). On a steep barrel with low tailwater HY-8 does
+//    not compute outlet control at all (its tables print "0.0*"), so this
+//    reports 0 there and inlet control governs. Full-flow friction is used
+//    only when the tailwater submerges the crown or the profile reaches it.
 //  - Outlet velocity: from the depth the profile actually reaches at the
 //    outlet — normal depth on steep barrels (S2 profile), max(yc, TW) on
 //    mild ones — matching HY-8's reported outlet velocity.
 //
 // Fixed assumptions (every culvert in the source project matches them):
 // box barrels only, square-edge headwall inlet (Chart 8/Scale 2, ke = 0.5),
-// constant tailwater, no roadway overtopping.
+// constant tailwater. Roadway overtopping is NOT modeled: at flows where
+// HY-8 diverts part of the discharge over the road, HY-8's headwater flattens
+// at the roadway crest while this method keeps rising with the full flow.
 
 const G = 32.2; // ft/s^2
 const MANNING_KU = 1.486; // US Manning's constant
@@ -74,9 +75,9 @@ function energyHead(qPerBarrel, span, y) {
 }
 
 // Inlet-control headwater depth (ft above inlet invert): HDS-5 nomograph
-// regression (form-1 unsubmerged below Q/(A·sqrt(D)) = 3.5, submerged above
-// 4.0, linear transition), floored by the energy-based value that HY-8
-// reports at low flows where the regression is out of its fitted range.
+// regression — form-1 unsubmerged below Q/(A·sqrt(D)) = 3.5, submerged above
+// 4.0, linear transition between. This is exactly what HY-8 evaluates
+// (verified row-by-row against its summary table for CU-JAS-06).
 export function inletControlHW(qPerBarrel, span, rise, slope) {
   const area = span * rise;
   const ratio = qPerBarrel / (area * Math.sqrt(rise));
@@ -90,17 +91,27 @@ export function inletControlHW(qPerBarrel, span, rise, slope) {
   };
   const submerged = () => rise * (IC.c * ratio * ratio + IC.Y + slopeTerm);
 
-  let regression;
-  if (ratio <= 3.5) regression = unsubmerged();
-  else if (ratio >= 4.0) regression = submerged();
+  let hw;
+  if (ratio <= 3.5) hw = unsubmerged();
+  else if (ratio >= 4.0) hw = submerged();
   else {
     const t = (ratio - 3.5) / 0.5;
-    regression = unsubmerged() * (1 - t) + submerged() * t;
+    hw = unsubmerged() * (1 - t) + submerged() * t;
   }
 
-  const yc = criticalDepth(qPerBarrel, span, rise);
-  const energy = energyHead(qPerBarrel, span, yc);
-  return Math.max(regression, energy);
+  // Deep submergence: beyond HW/D = 3 the fitted parabola falls under HY-8,
+  // which extrapolates as orifice flow. Anchor an orifice curve (head above
+  // the opening's center) at the parabola's own HW/D = 3 point — this
+  // reproduces HY-8's deep-submerged rows within ~0.15 m (verified against
+  // the CU-JAS-06 summary table at 50-80 m³/s).
+  if (hw > 3 * rise) {
+    const ratio3 = Math.sqrt((3 - IC.Y - slopeTerm) / IC.c);
+    const q3 = ratio3 * area * Math.sqrt(rise);
+    const cd = q3 / (area * Math.sqrt(2 * G * 2.5 * rise));
+    const v = qPerBarrel / (cd * area);
+    hw = rise / 2 + (v * v) / (2 * G);
+  }
+  return hw;
 }
 
 // Full-flow outlet control (barrel pressurized): HW = ho + H - L*S with
@@ -171,9 +182,10 @@ export function outletControlHW(qPerBarrel, span, rise, n, length, slope, twDept
   }
 
   if (yn !== null && yn < yc && twDepth <= yc) {
-    // Steep barrel, low tailwater: flow passes through critical at the inlet
-    // and runs supercritical — downstream conditions can't raise the pool.
-    return energyHead(qPerBarrel, span, yc);
+    // Steep barrel, low tailwater: flow runs supercritical, downstream
+    // conditions can't raise the pool. HY-8 doesn't compute outlet control
+    // here at all (its tables print "0.0*"), so inlet control governs.
+    return 0;
   }
 
   // Mild / horizontal barrel (or submerged-outlet steep): backwater profile
@@ -209,6 +221,25 @@ export function analyzeBoxCulvert({ qTotal, span, rise, barrels, n, length, usil
   const slope = length > 0 ? (usil - dsil) / length : 0;
   const twDepth = Math.max(0, (twElevation ?? dsil) - dsil);
 
+  if (!(qPerBarrel > 0)) {
+    // Zero flow: dry barrel, pool at the inlet invert (HY-8's zero row).
+    return {
+      qTotal: 0,
+      qPerBarrel: 0,
+      slope,
+      control: null,
+      hwDepth: 0,
+      hwElevation: usil,
+      hwOverD: 0,
+      inletControlDepth: 0,
+      outletControlDepth: 0,
+      normalDepth: 0,
+      criticalDepth: 0,
+      outletDepth: 0,
+      outletVelocity: 0,
+    };
+  }
+
   const yc = criticalDepth(qPerBarrel, span, rise);
   const yn = normalDepth(qPerBarrel, span, rise, n, slope);
 
@@ -228,6 +259,8 @@ export function analyzeBoxCulvert({ qTotal, span, rise, barrels, n, length, usil
     hwDepth,
     hwElevation: usil + hwDepth,
     hwOverD: hwDepth / rise,
+    inletControlDepth: hwInlet,
+    outletControlDepth: hwOutlet,
     normalDepth: yn,
     criticalDepth: yc,
     outletDepth: yOut,
