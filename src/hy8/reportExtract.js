@@ -6,9 +6,10 @@
 //
 // HW/D is NOT taken from the report: HY-8's SI reports print that column as
 // depth-in-meters / rise-in-feet (a unit-mixing quirk), so it is computed
-// here instead as inlet control depth / rise. The rise comes from the loaded
-// culvert schedule (matched by name) when one is present, else from the
-// .hy8 file's BARRELDATA.
+// here instead as max(inlet control depth, outlet control depth) / rise —
+// the governing headwater depth over the barrel height. The rise comes from
+// the loaded culvert schedule (matched by name) when one is present, else
+// from the .hy8 file's BARRELDATA.
 
 import { readFloats } from './hy8File.js';
 import { ftToM, cfsToCms } from './units.js';
@@ -90,13 +91,15 @@ export function extractReportResults(tables, doc, { csvRows = [] } = {}) {
 
     const r = best.row;
     const inletControlDepthM = toM(parseValue(r[col.inletControl]));
+    const outletControlDepthM = toM(parseValue(r[col.outletControl]));
+    const governingDepthM = Math.max(inletControlDepthM, outletControlDepthM);
     rows.push({
       ...base,
       hwElevationM: toM(parseValue(r[col.hwElev])),
-      hwOverD: riseM > 0 ? inletControlDepthM / riseM : null,
+      hwOverD: riseM > 0 ? governingDepthM / riseM : null,
       normalDepthM: toM(parseValue(r[col.normalDepth])),
       inletControlDepthM,
-      outletControlDepthM: toM(parseValue(r[col.outletControl])),
+      outletControlDepthM,
       outletVelocityMs: units === 'us' ? parseValue(r[col.outletVelocity]) * 0.3048 : parseValue(r[col.outletVelocity]),
       error: null,
     });

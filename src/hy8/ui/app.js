@@ -153,8 +153,8 @@ export function initApp(root, { download = defaultDownload } = {}) {
         <label for="docxInput">HY-8 culvert analysis report (.docx)</label>
         <input type="file" id="docxInput" accept=".docx" disabled>
         <span class="field-hint">Load the matching .hy8 file first — the design flow for each culvert is read from it.
-          HW/D is computed as inlet control depth ÷ rise (rise from the loaded culvert schedule, or the
-          .hy8 file if no schedule is loaded), not taken from the report's HW/D column.</span>
+          HW/D is computed as max(inlet, outlet control depth) ÷ rise (rise from the loaded culvert
+          schedule, or the .hy8 file if no schedule is loaded), not taken from the report's HW/D column.</span>
       </div>
       <button id="exportReportBtn" class="btn" disabled>Export report results as CSV</button>
       <div id="reportContainer"></div>

@@ -95,10 +95,11 @@ list accept CSV or `.xlsx` (first worksheet; legacy `.xls` is not supported).
   `<name>_report_results.csv`. Missing tables, missing columns, or a design
   flow absent from the report's flow rows are flagged per row. HW/D is not
   taken from the report's printed column (HY-8's SI reports divide a depth
-  in meters by the rise in feet there): it is computed as inlet control
-  depth ÷ rise, with the rise taken from the loaded culvert schedule
-  (matched by culvert name) or from the `.hy8` file's `BARRELDATA` when no
-  schedule is loaded.
+  in meters by the rise in feet there): it is computed as the governing
+  headwater depth — max(inlet control depth, outlet control depth) — ÷
+  rise, with the rise taken from the loaded culvert schedule (matched by
+  culvert name) or from the `.hy8` file's `BARRELDATA` when no schedule is
+  loaded.
 - **Units**: the whole UI — file labels, the differences panel, the culvert
   summary, and the exported CSVs — is SI throughout (meters, m³/s). The
   `.hy8` file itself always stores US customary units (feet, cfs) regardless

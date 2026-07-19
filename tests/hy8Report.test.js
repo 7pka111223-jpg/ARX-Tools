@@ -52,8 +52,9 @@ test('CU-JAS-06 extraction matches the known design-flow row (7.71 cms)', async 
   assert.equal(r.inletControlDepthM.toFixed(2), '1.66');
   assert.equal(r.outletControlDepthM, 0); // "0.0*" — asterisk marker stripped
   // HW/D is NOT the report's printed column (HY-8 prints depth-m / rise-ft
-  // there): it's inlet control depth / rise. No schedule loaded here, so the
-  // rise falls back to BARRELDATA (8.2021 ft = 2.50 m): 1.66 / 2.50 = 0.664.
+  // there): it's max(inlet, outlet control depth) / rise. Here IC 1.66
+  // governs (OC is 0.0*); no schedule loaded, so the rise falls back to
+  // BARRELDATA (8.2021 ft = 2.50 m): 1.66 / 2.50 = 0.664.
   assert.equal(r.hwOverD.toFixed(3), (1.66 / 2.5001).toFixed(3));
   assert.equal(r.normalDepthM.toFixed(2), '0.67');
   assert.equal(r.outletVelocityMs.toFixed(2), '4.51');
@@ -71,6 +72,36 @@ test('HW/D uses the rise from the loaded culvert schedule when provided', async 
   const other = rows.find((x) => x.name === 'CU-JAS-07' && !x.error);
   assert.ok(other);
   assert.ok(Number.isFinite(other.hwOverD));
+});
+
+test('HW/D takes the outlet control depth when it exceeds inlet control', async () => {
+  const doc = parseHy8(hy8Text);
+  const crossing = doc.crossings[0];
+  const designCms = 7.71;
+  const table = {
+    name: crossing.culverts[0].name,
+    header: [
+      'Total Discharge (cms)',
+      'Culvert Discharge (cms)',
+      'Headwater Elevation (m)',
+      'Inlet Control Depth (m)',
+      'Outlet Control Depth (m)',
+      'HW / D (m)',
+      'Flow Type',
+      'Normal Depth (m)',
+      'Critical Depth (m)',
+      'Outlet Depth (m)',
+      'Tailwater Depth (m)',
+      'Outlet Velocity (m/s)',
+      'Tailwater Velocity (m/s)',
+    ],
+    // Outlet control (2.10) governs over inlet control (1.66) here.
+    rows: [[String(designCms), String(designCms), '182.80', '1.66', '2.10', '0.20', '7-M2c', '0.67', '0.99', '0.68', '0.00', '3.90', '0.00']],
+  };
+  const rows = extractReportResults([table], doc, { csvRows: [{ name: crossing.culverts[0].name, riseM: 2.5 }] });
+  const r = rows.find((x) => x.name === crossing.culverts[0].name);
+  assert.equal(r.error, null);
+  assert.equal(r.hwOverD.toFixed(3), (2.1 / 2.5).toFixed(3));
 });
 
 test('a culvert missing from the report is flagged, not dropped', async () => {
