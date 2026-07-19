@@ -455,3 +455,33 @@ test('editing a threshold re-runs the checks live', () => {
   thCover.dispatchEvent(new window.Event('input'));
   assert.ok(root.querySelector('#checksResultTable td.check-fail'));
 });
+
+test('the checks tab takes cover from the loaded schedule, not the .hy8 geometry', () => {
+  const { root, app, downloads } = makeApp();
+
+  // Create a file whose culvert has the default 2 m cover baked into its
+  // roadway (so the .hy8 geometry cover would read ~2 m).
+  app.setCreatorGrid(
+    [
+      ['Name', 'Design Flow (m3/s)', 'Cells', 'Width (m)', 'Rise (m)', 'Length (m)', 'USIL (m)', 'DSIL (m)', 'Slope (m/m)'],
+      ['CU-TEST', '2', '1', '2.5', '2.5', '30', '10', '9.9', ''],
+    ],
+    'one.csv'
+  );
+  root.querySelector('#createBtn').dispatchEvent(new window.Event('click'));
+  app.setHy8Text(downloads.pop().text, 'created.hy8');
+
+  // Load a schedule that gives that culvert a small design cover of 0.5 m.
+  app.setCsvText(
+    'Name,Station,Cells,Width (m),Rise (m),Length (m),USIL (m),DSIL (m),Average Cover (m)\nCU-TEST,0+000,1,2.5,2.5,30,10,9.9,0.5\n',
+    'schedule.csv'
+  );
+
+  root.querySelector('#tabBtnChecks').dispatchEvent(new window.Event('click'));
+  root.querySelector('#runChecksBtn').dispatchEvent(new window.Event('click'));
+
+  const coverCell = root.querySelector('#checksResultTable tbody tr td:nth-child(2)');
+  assert.equal(coverCell.textContent.trim(), '0.500'); // schedule cover, not the ~2 m geometry
+  // 0.5 < 1 (default min) -> the cover cell is flagged.
+  assert.ok(coverCell.classList.contains('check-fail'));
+});

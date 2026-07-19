@@ -101,8 +101,10 @@ list accept CSV or `.xlsx` (first worksheet; legacy `.xls` is not supported).
   workbook `<name>_report_results.xlsx` with two sheets: **Hydraulic Results**
   (design flow, headwater elevation, HW/D, normal / inlet control / outlet
   control depths, outlet velocity) and **Geometric Data** (number of barrels,
-  cell width and height, cover, slope, upstream and downstream invert
-  elevations, culvert length, skew). Cells that cross the review thresholds
+  cell width and height, cover — from the loaded schedule's `Average Cover (m)`
+  when present, else the file's roadway geometry — slope, upstream and
+  downstream invert elevations, culvert length, skew). Cells that cross the
+  review thresholds
   are highlighted red with real Excel conditional formatting — HW/D and outlet
   velocity on the hydraulic sheet, cover on the geometric sheet — using the
   thresholds set on the Checks tab. (Skew is not stored in the `.hy8` project
@@ -118,11 +120,12 @@ list accept CSV or `.xlsx` (first worksheet; legacy `.xls` is not supported).
   review thresholds — **cover** (minimum, default 1 m), **HW/D** (maximum,
   default 1), and **outlet velocity** (maximum, default 4.5 m/s), all
   editable. HW/D and outlet velocity come from the loaded HY-8 report when one
-  is present, otherwise from the in-browser HDS-5 analysis (selectable);
-  cover is read from the file's roadway crest and invert data (crest − USIL −
-  cell height). Failing values are shown red in the table and exported to
-  `<name>_checks.xlsx` with the same conditional formatting. Editing a
-  threshold re-runs the checks live.
+  is present, otherwise from the in-browser HDS-5 analysis (selectable); cover
+  is taken from the loaded culvert schedule's `Average Cover (m)` column
+  (matched by culvert name), falling back to the file's own roadway/invert data
+  (crest − USIL − cell height) for culverts not in the schedule. Failing values
+  are shown red in the table and exported to `<name>_checks.xlsx` with the same
+  conditional formatting. Editing a threshold re-runs the checks live.
 - **Create a new HY-8 file**: the "Create new HY-8" tab builds a complete
   `.hy8` project from scratch out of a culvert list — no starting HY-8 file
   needed. Click **Download Excel template (.xlsx)** to get a template with

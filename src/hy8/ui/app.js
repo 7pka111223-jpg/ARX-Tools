@@ -227,8 +227,9 @@ export function initApp(root, { download = defaultDownload } = {}) {
       </div>
       <p class="hint">Load a .hy8 file in the Import tab first. Cover is a <strong>minimum</strong>
         (flagged when below); HW/D and outlet velocity are <strong>maxima</strong> (flagged when above).
-        Values come from the HY-8 report (if one is loaded) or the in-browser HDS-5 analysis; cover
-        comes from the file's roadway and invert data.</p>
+        HW/D and outlet velocity come from the HY-8 report (if one is loaded) or the in-browser HDS-5
+        analysis; cover comes from the loaded culvert schedule's Average Cover column (matched by
+        culvert name), falling back to the .hy8 file's roadway/invert data when no schedule is loaded.</p>
       <div class="field-row">
         <div class="field threshold-field">
           <label for="thCover">Cover — min (m)</label>
@@ -696,7 +697,7 @@ export function initApp(root, { download = defaultDownload } = {}) {
   els.exportReportBtn.addEventListener('click', () => {
     try {
       readThresholds();
-      const bytes = buildReportExcel(state.reportRows, geometryByName(state.hy8Doc), state.thresholds);
+      const bytes = buildReportExcel(state.reportRows, geometryWithScheduleCover(), state.thresholds);
       const name = downloadName(state.hy8FileName, '_report_results.xlsx');
       download(name, bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       els.reportStatusMsg.textContent = `Downloaded ${name} — Hydraulic Results + Geometric Data sheets.`;
@@ -794,6 +795,28 @@ export function initApp(root, { download = defaultDownload } = {}) {
     els.exportChecksBtn.disabled = !state.checkRows;
   }
 
+  // Geometry keyed by culvert name, with the cover replaced by the loaded
+  // culvert schedule's Average Cover column (the design cover) whenever the
+  // culvert is in the schedule. Falls back to the .hy8 file's own roadway
+  // cover for culverts not in the schedule (or when none is loaded).
+  function geometryWithScheduleCover() {
+    const geom = geometryByName(state.hy8Doc);
+    const coverByName = new Map();
+    for (const r of state.csvRows) {
+      if (r.name && Number.isFinite(r.coverM)) coverByName.set(r.name.trim().toLowerCase(), r.coverM);
+    }
+    // Whatever the mapping paired (covers station-mode matches too).
+    for (const { csvRow, culvert, crossing } of state.mapResult.pairs) {
+      if (Number.isFinite(csvRow.coverM)) {
+        coverByName.set((culvert.name || crossing.name || '').trim().toLowerCase(), csvRow.coverM);
+      }
+    }
+    for (const [key, g] of geom) {
+      if (coverByName.has(key)) g.coverM = coverByName.get(key);
+    }
+    return geom;
+  }
+
   // name(lowercased) -> { hwOverD, outletVelocityMs } from the chosen source.
   function chosenHydraulic() {
     const map = new Map();
@@ -815,7 +838,7 @@ export function initApp(root, { download = defaultDownload } = {}) {
     }
     readThresholds();
     const { map, label } = chosenHydraulic();
-    state.checkRows = runChecks(geometryByName(state.hy8Doc), map, state.thresholds);
+    state.checkRows = runChecks(geometryWithScheduleCover(), map, state.thresholds);
     state.checkSource = label;
     els.checksContainer.innerHTML = renderChecksTable(state.checkRows, state.thresholds);
     els.exportChecksBtn.disabled = false;
