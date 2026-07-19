@@ -32,6 +32,8 @@ export function initApp(root, { download = defaultDownload } = {}) {
     summaryRows: null,
     summarySource: null,
     reportRows: null,
+    reportTables: null,
+    reportFileName: null,
     fullAnalysis: null,
   };
 
@@ -150,7 +152,9 @@ export function initApp(root, { download = defaultDownload } = {}) {
       <div class="field">
         <label for="docxInput">HY-8 culvert analysis report (.docx)</label>
         <input type="file" id="docxInput" accept=".docx" disabled>
-        <span class="field-hint">Load the matching .hy8 file first — the design flow for each culvert is read from it.</span>
+        <span class="field-hint">Load the matching .hy8 file first — the design flow for each culvert is read from it.
+          HW/D is computed as inlet control depth ÷ rise (rise from the loaded culvert schedule, or the
+          .hy8 file if no schedule is loaded), not taken from the report's HW/D column.</span>
       </div>
       <button id="exportReportBtn" class="btn" disabled>Export report results as CSV</button>
       <div id="reportContainer"></div>
@@ -204,6 +208,9 @@ export function initApp(root, { download = defaultDownload } = {}) {
     state.fullAnalysis = null;
     els.analysisContainer.innerHTML = '';
     els.summaryStatusMsg.textContent = '';
+    // A schedule change alters the rises used for the report's HW/D —
+    // re-extract an already-loaded report with the fresh values.
+    if (state.reportTables && state.hy8Doc) runReportExtraction();
     render();
     renderSummary();
   }
@@ -285,6 +292,8 @@ export function initApp(root, { download = defaultDownload } = {}) {
     state.hy8Doc = parseHy8(text);
     // Any previously extracted report belonged to the old file.
     state.reportRows = null;
+    state.reportTables = null;
+    state.reportFileName = null;
     els.reportContainer.innerHTML = '';
     els.reportStatusMsg.textContent = '';
     recomputeMapping();
@@ -497,6 +506,18 @@ export function initApp(root, { download = defaultDownload } = {}) {
 
   // Extracts the design-flow results from an HY-8 report .docx, using the
   // loaded .hy8 (not the imported copy) — the report was generated from it.
+  function runReportExtraction() {
+    state.reportRows = extractReportResults(state.reportTables, state.hy8Doc, { csvRows: state.csvRows });
+    els.reportContainer.innerHTML = renderReportTable(state.reportRows);
+    els.exportReportBtn.disabled = false;
+    const extracted = state.reportRows.filter((r) => !r.error).length;
+    const flagged = state.reportRows.length - extracted;
+    els.reportStatusMsg.textContent =
+      `${state.reportFileName}: ${extracted} culvert(s) extracted at their design flow` +
+      (flagged ? `, ${flagged} flagged (see notes)` : '') + '.';
+    els.reportStatusMsg.className = 'status status--success';
+  }
+
   async function setReportDocx(arrayBuffer, fileName) {
     if (!state.hy8Doc) {
       els.reportStatusMsg.textContent = 'Load the matching .hy8 file first.';
@@ -505,15 +526,9 @@ export function initApp(root, { download = defaultDownload } = {}) {
     }
     const tables = await parseDocxSummaryTables(arrayBuffer);
     if (!tables.length) throw new Error('no "Culvert Summary Table" found in this document');
-    state.reportRows = extractReportResults(tables, state.hy8Doc);
-    els.reportContainer.innerHTML = renderReportTable(state.reportRows);
-    els.exportReportBtn.disabled = false;
-    const extracted = state.reportRows.filter((r) => !r.error).length;
-    const flagged = state.reportRows.length - extracted;
-    els.reportStatusMsg.textContent =
-      `${fileName}: ${extracted} culvert(s) extracted at their design flow` +
-      (flagged ? `, ${flagged} flagged (see notes)` : '') + '.';
-    els.reportStatusMsg.className = 'status status--success';
+    state.reportTables = tables;
+    state.reportFileName = fileName;
+    runReportExtraction();
   }
 
   els.docxInput.addEventListener('change', (e) => {

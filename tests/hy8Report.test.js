@@ -45,15 +45,32 @@ test('CU-JAS-06 extraction matches the known design-flow row (7.71 cms)', async 
   const r = rows.find((x) => x.name === 'CU-JAS-06');
 
   // Hand-read from the report's table row at 7.71 cms:
-  // HW elev 182.36, IC 1.66, OC 0.0*, HW/D 0.20, yn 0.67, v 4.51
+  // HW elev 182.36, IC 1.66, OC 0.0*, yn 0.67, v 4.51
   assert.equal(r.error, null);
   assert.equal(r.designFlowCms.toFixed(2), '7.71');
   assert.equal(r.hwElevationM.toFixed(2), '182.36');
   assert.equal(r.inletControlDepthM.toFixed(2), '1.66');
   assert.equal(r.outletControlDepthM, 0); // "0.0*" — asterisk marker stripped
-  assert.equal(r.hwOverD.toFixed(2), '0.20');
+  // HW/D is NOT the report's printed column (HY-8 prints depth-m / rise-ft
+  // there): it's inlet control depth / rise. No schedule loaded here, so the
+  // rise falls back to BARRELDATA (8.2021 ft = 2.50 m): 1.66 / 2.50 = 0.664.
+  assert.equal(r.hwOverD.toFixed(3), (1.66 / 2.5001).toFixed(3));
   assert.equal(r.normalDepthM.toFixed(2), '0.67');
   assert.equal(r.outletVelocityMs.toFixed(2), '4.51');
+});
+
+test('HW/D uses the rise from the loaded culvert schedule when provided', async () => {
+  const tables = await parseDocxSummaryTables(docxArrayBuffer());
+  const doc = parseHy8(hy8Text);
+  const csvRows = [{ name: 'CU-JAS-06', riseM: 2.0 }];
+  const rows = extractReportResults(tables, doc, { csvRows });
+  const r = rows.find((x) => x.name === 'CU-JAS-06');
+  assert.equal(r.hwOverD.toFixed(3), (1.66 / 2.0).toFixed(3));
+
+  // Culverts absent from the schedule still fall back to BARRELDATA.
+  const other = rows.find((x) => x.name === 'CU-JAS-07' && !x.error);
+  assert.ok(other);
+  assert.ok(Number.isFinite(other.hwOverD));
 });
 
 test('a culvert missing from the report is flagged, not dropped', async () => {
@@ -91,7 +108,8 @@ test('a US-units report converts to SI on extraction', async () => {
   const r = rows.find((x) => x.name === table.name);
   assert.equal(r.error, null);
   assert.equal(r.hwElevationM.toFixed(2), (598.29 * 0.3048).toFixed(2));
-  assert.equal(r.hwOverD.toFixed(2), '0.20'); // dimensionless — no conversion
+  // IC 5.45 ft -> 1.661 m over the BARRELDATA rise (2.50 m).
+  assert.equal(r.hwOverD.toFixed(2), ((5.45 * 0.3048) / 2.5001).toFixed(2));
   assert.equal(r.outletVelocityMs.toFixed(3), (14.8 * 0.3048).toFixed(3));
 });
 

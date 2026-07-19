@@ -3,6 +3,12 @@
 // project's design flow and extracts the hydraulic results, always output
 // in SI. The report itself may be in either display unit system — units are
 // detected from the column headers ("(cms)"/"(m)" vs "(cfs)"/"(ft)").
+//
+// HW/D is NOT taken from the report: HY-8's SI reports print that column as
+// depth-in-meters / rise-in-feet (a unit-mixing quirk), so it is computed
+// here instead as inlet control depth / rise. The rise comes from the loaded
+// culvert schedule (matched by name) when one is present, else from the
+// .hy8 file's BARRELDATA.
 
 import { readFloats } from './hy8File.js';
 import { ftToM, cfsToCms } from './units.js';
@@ -25,9 +31,13 @@ function detectUnits(header) {
   return 'si';
 }
 
-export function extractReportResults(tables, doc) {
+export function extractReportResults(tables, doc, { csvRows = [] } = {}) {
   const tableByName = new Map();
   for (const t of tables) tableByName.set(t.name.trim().toLowerCase(), t);
+  const scheduleRiseByName = new Map();
+  for (const r of csvRows) {
+    if (r.name && Number.isFinite(r.riseM)) scheduleRiseByName.set(r.name.trim().toLowerCase(), r.riseM);
+  }
 
   const rows = [];
   for (const crossing of doc.crossings) {
@@ -48,7 +58,6 @@ export function extractReportResults(tables, doc) {
       hwElev: findColumn(table.header, 'Headwater Elevation'),
       inletControl: findColumn(table.header, 'Inlet Control Depth'),
       outletControl: findColumn(table.header, 'Outlet Control Depth'),
-      hwOverD: findColumn(table.header, 'HW / D'),
       normalDepth: findColumn(table.header, 'Normal Depth'),
       outletVelocity: findColumn(table.header, 'Outlet Velocity'),
     };
@@ -76,13 +85,17 @@ export function extractReportResults(tables, doc) {
       continue;
     }
 
+    // Rise for HW/D: prefer the loaded culvert schedule, else BARRELDATA.
+    const riseM = scheduleRiseByName.get(name.toLowerCase()) ?? ftToM(readFloats(doc, culvert.barrelDataLine)[1]);
+
     const r = best.row;
+    const inletControlDepthM = toM(parseValue(r[col.inletControl]));
     rows.push({
       ...base,
       hwElevationM: toM(parseValue(r[col.hwElev])),
-      hwOverD: parseValue(r[col.hwOverD]),
+      hwOverD: riseM > 0 ? inletControlDepthM / riseM : null,
       normalDepthM: toM(parseValue(r[col.normalDepth])),
-      inletControlDepthM: toM(parseValue(r[col.inletControl])),
+      inletControlDepthM,
       outletControlDepthM: toM(parseValue(r[col.outletControl])),
       outletVelocityMs: units === 'us' ? parseValue(r[col.outletVelocity]) * 0.3048 : parseValue(r[col.outletVelocity]),
       error: null,

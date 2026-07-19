@@ -222,6 +222,30 @@ test('DOCX report extraction renders the design-flow results and exports CSV', a
   assert.ok(downloads[0].text.includes('CU-JAS-06'));
 });
 
+test('loading a culvert schedule after the DOCX re-extracts HW/D with the schedule rise', async () => {
+  const { readFileSync } = await import('node:fs');
+  const docxBuf = readFileSync(join(__dirname, 'fixtures/hy8/Section_3_report.docx'));
+  const hy8Section3 = readFileSync(join(__dirname, 'fixtures/hy8/Section_3.hy8'), 'utf8');
+
+  const { app } = makeApp();
+  app.setHy8Text(hy8Section3, 'Section_3.hy8');
+  await app.setReportDocx(docxBuf.buffer.slice(docxBuf.byteOffset, docxBuf.byteOffset + docxBuf.byteLength), 'Section_3_report.docx');
+
+  const before = app.state.reportRows.find((r) => r.name === 'CU-JAS-06').hwOverD;
+  assert.equal(before.toFixed(3), (1.66 / 2.5001).toFixed(3)); // BARRELDATA fallback
+
+  // A schedule with a different rise for CU-JAS-06 must re-derive HW/D.
+  app.setCsvRows(
+    [
+      ['Name', 'Station', 'Cells', 'Width (m)', 'Rise (m)', 'Length (m)', 'USIL (m)', 'DSIL (m)'],
+      ['CU-JAS-06', '1+000', '1', '2.5', '2.0', '86.1', '180.70', '179.48'],
+    ],
+    'schedule.csv'
+  );
+  const after = app.state.reportRows.find((r) => r.name === 'CU-JAS-06').hwOverD;
+  assert.equal(after.toFixed(3), (1.66 / 2.0).toFixed(3));
+});
+
 test('loading a new .hy8 clears a stale report extraction', async () => {
   const { readFileSync } = await import('node:fs');
   const docxBuf = readFileSync(join(__dirname, 'fixtures/hy8/Section_3_report.docx'));
