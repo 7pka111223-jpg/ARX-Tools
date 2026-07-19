@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HY-8 CSV Importer</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232563eb' stroke-width='2'%3E%3Cpath d='M3 12h4l3 8 4-16 3 8h4'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --color-bg: #f1f5f9;
+    --color-surface: #ffffff;
+    --color-surface-muted: #f8fafc;
+    --color-border: #e2e8f0;
+    --color-border-strong: #cbd5e1;
+    --color-text: #0f172a;
+    --color-text-secondary: #64748b;
+    --color-text-tertiary: #94a3b8;
+    --color-primary: #2563eb;
+    --color-primary-hover: #1d4ed8;
+    --color-primary-soft: #eff6ff;
+    --color-success: #15803d;
+    --color-success-bg: #dcfce7;
+    --color-danger: #b91c1c;
+    --color-danger-bg: #fee2e2;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.04);
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: var(--font-sans);
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a, button, input, select, textarea { font-family: inherit; }
+
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  .app-shell {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 28px 24px 64px;
+  }
+
+  .app-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+
+  .app-header__icon {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-primary-soft);
+    color: var(--color-primary);
+    border-radius: var(--radius-md);
+  }
+
+  .app-header h1 { font-size: 19px; font-weight: 650; letter-spacing: -0.01em; margin: 0; }
+  .app-header p { margin: 2px 0 0; font-size: 13px; color: var(--color-text-secondary); }
+
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .card__header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+  .card__title { font-size: 14px; font-weight: 650; margin: 12px 0 8px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-secondary); }
+  .card__header .card__title { margin: 0; }
+  .card__hint { font-size: 12.5px; color: var(--color-text-tertiary); }
+  .hint { font-size: 13px; color: var(--color-text-secondary); }
+
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12.5px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px; }
+  .field input[type="file"],
+  .field input[type="text"],
+  .field input[type="number"] {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    font-size: 13.5px;
+    color: var(--color-text);
+  }
+  .field-hint { display: block; font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px; }
+
+  .tabs { display: flex; gap: 6px; margin-bottom: 20px; border-bottom: 1px solid var(--color-border); }
+  .tab {
+    appearance: none;
+    border: 1px solid transparent;
+    border-bottom: none;
+    background: none;
+    color: var(--color-text-secondary);
+    font-size: 13.5px;
+    font-weight: 600;
+    padding: 9px 16px;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    cursor: pointer;
+  }
+  .tab:hover { color: var(--color-text); }
+  .tab.is-active {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+    color: var(--color-primary);
+    margin-bottom: -1px;
+  }
+
+  .field-row { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 14px; }
+  .field-checkbox { display: flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--color-text); }
+  .field-checkbox input { width: 16px; height: 16px; }
+
+  textarea#flowText {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    resize: vertical;
+    margin-bottom: 10px;
+  }
+
+  table { border-collapse: collapse; width: 100%; margin-bottom: 8px; }
+  thead th {
+    text-align: left;
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-tertiary);
+    font-weight: 600;
+    padding: 0 10px 8px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  tbody td { padding: 8px 10px; border-bottom: 1px solid var(--color-border); font-size: 13px; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--color-surface-muted); }
+
+  .diff-block { margin-bottom: 18px; }
+  .diff-block h4 { margin: 0 0 6px; font-size: 13.5px; font-weight: 650; }
+  table.diff-table tbody td { font-family: var(--font-mono); font-size: 12.5px; }
+
+  .btn {
+    appearance: none;
+    border: 1px solid var(--color-border-strong);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-size: 13.5px;
+    font-weight: 550;
+    padding: 9px 16px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn:hover { background: var(--color-surface-muted); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--color-primary-hover); }
+
+  .status { font-size: 13.5px; font-weight: 550; margin: 12px 0 4px; min-height: 1.4em; }
+  .status--success { color: var(--color-success); }
+  .status--error { color: var(--color-danger); }
+
+  #exportDiffsBtn { margin-top: 8px; }
+
+  #summaryContainer { overflow-x: auto; margin-top: 12px; }
+  #summaryResultTable { min-width: 760px; }
+  #reportContainer { overflow-x: auto; margin-top: 12px; }
+  #reportResultTable { min-width: 720px; }
+  #exportReportBtn { margin-top: 4px; }
+
+  #creatorContainer { overflow-x: auto; margin-top: 12px; }
+  #creatorResultTable { min-width: 760px; }
+  #creatorProjectName { max-width: 320px; }
+
+  .license-gate { max-width: 640px; }
+  .machine-id-row { display: flex; align-items: center; gap: 10px; }
+  .machine-id-row code {
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 650;
+    letter-spacing: 0.06em;
+    background: var(--color-surface-muted);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+  }
+  #licenseKeyInput {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    resize: vertical;
+  }
+  .license-info { font-size: 12px; color: var(--color-text-tertiary); margin: 0 0 10px; }
+
+  .plan-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+  .plan-card {
+    appearance: none;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-width: 150px;
+    padding: 12px 16px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    text-align: left;
+  }
+  .plan-card:hover { background: var(--color-surface-muted); }
+  .plan-card.is-selected { border-color: var(--color-primary); background: var(--color-primary-soft); }
+  .plan-card__label { font-size: 13px; font-weight: 650; color: var(--color-text); }
+  .plan-card__price { font-size: 20px; font-weight: 700; color: var(--color-primary); }
+  .plan-card__note { font-size: 12px; color: var(--color-text-secondary); }
+  .payment-box {
+    background: var(--color-surface-muted);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 12px 16px;
+    font-size: 13.5px;
+  }
+  .payment-box p { margin: 6px 0; }
+  .payment-box code {
+    font-family: var(--font-mono);
+    font-weight: 650;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    padding: 1px 6px;
+  }
+
+  #checksContainer { overflow-x: auto; margin-top: 12px; }
+  #checksResultTable { min-width: 640px; }
+  #checksResultTable td.check-fail, #checksResultTable span.check-fail { color: var(--color-danger); font-weight: 650; }
+  #checksResultTable td.check-fail { background: var(--color-danger-bg); }
+  #checksResultTable td.check-ok, #checksResultTable span.check-ok { color: var(--color-success); }
+  #checksResultTable td.check-na, #checksResultTable span.check-na { color: var(--color-text-tertiary); }
+  .threshold-field { max-width: 160px; }
+  .threshold-field label { white-space: nowrap; }
+
+  #analysisContainer { margin-top: 12px; }
+  .analysis-block { border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 8px; }
+  .analysis-block summary { padding: 10px 12px; cursor: pointer; font-size: 13.5px; font-weight: 600; }
+  .analysis-block[open] summary { border-bottom: 1px solid var(--color-border); }
+  .analysis-block > table { margin: 0; }
+  .analysis-block { overflow-x: auto; }
+  .analysis-table { min-width: 860px; }
+  .analysis-table tr.is-design td { background: var(--color-primary-soft); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <header class="app-header">
+    <span class="app-header__icon" aria-hidden="true">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>
+    </span>
+    <div>
+      <h1>HY-8 CSV Importer</h1>
+      <p>Map a culvert schedule into an HY-8 project file — or create a new HY-8 file from a culvert list — review differences, set design flows, and analyze culverts, fully offline</p>
+    </div>
+  </header>
+  <div id="app"></div>
+</div>
+<script>
+/*__APP_CODE__*/
+document.addEventListener('DOMContentLoaded', () => {
+  window.__hy8ImporterApp = initHy8ImporterApp(document.getElementById('app'));
+});
+</script>
+</body>
+</html>

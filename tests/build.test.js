@@ -27,3 +27,18 @@ test('npm run build produces a single self-contained HTML file with no leftover 
   // embedded code/data.
   assert.equal((html.match(/<\/script/gi) || []).length, 2);
 });
+
+test('npm run build also produces a self-contained dist/hy8-importer.html', () => {
+  execFileSync('node', ['build.js'], { stdio: 'inherit' });
+  assert.ok(existsSync('dist/hy8-importer.html'));
+  const html = readFileSync('dist/hy8-importer.html', 'utf8');
+  assert.ok(html.includes('<title>HY-8 CSV Importer</title>'));
+  assert.ok(!html.includes('__APP_CODE__'));
+  assert.ok(html.includes('initHy8ImporterApp'));
+  // Same self-contained criteria as drawing-checker.html: no external
+  // script/style src (an inline SVG's xmlns="http://www.w3.org/2000/svg" is
+  // a namespace declaration, not a network request, so it's not flagged).
+  assert.ok(!/<script[^>]+src=(?!["']?data:)/.test(html));
+  assert.ok(!/<link[^>]+href=(?!["']?data:)/.test(html));
+  assert.equal((html.match(/<\/script/gi) || []).length, 1);
+});
