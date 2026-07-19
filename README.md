@@ -48,10 +48,11 @@ list accept CSV or `.xlsx` (first worksheet; legacy `.xls` is not supported).
   CSV too (name mode updates the crossing's station label; station mode
   updates the culvert name).
 - **Roadway data**: every imported crossing also gets the standard roadway —
-  crest elevation = USIL + cell height + 2 m of cover, crest length 20 m,
-  top width 8 m, profile shape "constant roadway elevation", paved surface.
-  Roadway fields that would change appear in the differences report like any
-  other field.
+  crest elevation = USIL + cell height + cover, crest length 20 m, top width
+  8 m, profile shape "constant roadway elevation", paved surface. The cover
+  is taken from the schedule's `Average Cover (m)` column when present,
+  falling back to 2 m when the column is absent. Roadway fields that would
+  change appear in the differences report like any other field.
 - **Differences report**: before importing, review every field that would
   change (tolerance ~0.003 m), shown as CSV value and current HY-8 value —
   both in SI, side by side. Click **Export differences as CSV** to download
@@ -126,9 +127,11 @@ list accept CSV or `.xlsx` (first worksheet; legacy `.xls` is not supported).
   `.hy8` project from scratch out of a culvert list — no starting HY-8 file
   needed. Click **Download Excel template (.xlsx)** to get a template with
   one row per culvert (SI units): name, design flow, cells, cell width and
-  height, length, and the inverts. Give USIL & DSIL directly, or leave both
-  blank and give a **Slope (m/m)** instead — the downstream invert is then
-  written as 0 and the upstream invert as slope × length. Fill it in
+  height, length, the inverts, and an optional `Average Cover (m)`. Give
+  USIL & DSIL directly, or leave both blank and give a **Slope (m/m)**
+  instead — the downstream invert is then written as 0 and the upstream
+  invert as slope × length. Cover defaults to 2 m when its column is blank.
+  Fill it in
   (CSV works too), load it back, review the parsed preview (including each
   crossing's derived roadway crest), name the file, and download. Every
   crossing is created as a concrete box culvert (square-edge headwall inlet,

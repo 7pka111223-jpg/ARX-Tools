@@ -229,10 +229,10 @@ export function buildXlsx(rows, sheetName = 'Sheet1') {
 // Column names match the creatorRows.js parser; the two example rows show
 // the two invert modes (direct USIL/DSIL vs slope).
 export const CREATOR_TEMPLATE_ROWS = [
-  ['Fill one row per culvert (SI units). Give USIL & DSIL, or leave both blank and give a Slope (m/m) — then DSIL is taken as 0 and USIL = slope × length. Delete the two example rows before importing.'],
-  ['Name', 'Design Flow (m3/s)', 'Cells', 'Width (m)', 'Rise (m)', 'Length (m)', 'USIL (m)', 'DSIL (m)', 'Slope (m/m)'],
-  ['CU-EX-01', 10, 2, 2.5, 2.5, 72.3, 5.2, 4.85, ''],
-  ['CU-EX-02', 5, 1, 1.5, 1.5, 40, '', '', 0.005],
+  ['Fill one row per culvert (SI units). Give USIL & DSIL, or leave both blank and give a Slope (m/m) — then DSIL is taken as 0 and USIL = slope × length. Average Cover (m) is optional (default 2 m); the roadway crest is USIL + Rise + cover. Delete the two example rows before importing.'],
+  ['Name', 'Design Flow (m3/s)', 'Cells', 'Width (m)', 'Rise (m)', 'Length (m)', 'USIL (m)', 'DSIL (m)', 'Slope (m/m)', 'Average Cover (m)'],
+  ['CU-EX-01', 10, 2, 2.5, 2.5, 72.3, 5.2, 4.85, '', 2.5],
+  ['CU-EX-02', 5, 1, 1.5, 1.5, 40, '', '', 0.005, ''],
 ];
 
 export function buildCreatorTemplateXlsx() {

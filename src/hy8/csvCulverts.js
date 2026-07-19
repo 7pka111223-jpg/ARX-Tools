@@ -85,6 +85,10 @@ export function rowsToCulverts(rows) {
   if (headerIdx === -1) return [];
 
   const header = rows[headerIdx];
+  const coverCol = (() => {
+    const c = findColumn(header, 'Average Cover (m)');
+    return c !== -1 ? c : findColumn(header, 'Cover (m)');
+  })();
   const col = {
     name: findColumn(header, 'Name'),
     station: findColumn(header, 'Station'),
@@ -94,6 +98,7 @@ export function rowsToCulverts(rows) {
     length: findColumn(header, 'Length (m)'),
     usil: findColumn(header, 'USIL (m)'),
     dsil: findColumn(header, 'DSIL (m)'),
+    cover: coverCol,
   };
 
   const result = [];
@@ -103,6 +108,9 @@ export function rowsToCulverts(rows) {
     const name = row[col.name] !== undefined ? String(row[col.name]).trim() : '';
     if (!name) continue;
     const stationRaw = row[col.station] !== undefined ? String(row[col.station]).trim() : '';
+    // Cover is optional — undefined (not NaN) when the column is absent, so
+    // the roadway falls back to its 2 m default rather than a bad crest.
+    const coverRaw = col.cover !== -1 ? Number(row[col.cover]) : NaN;
     result.push({
       name,
       stationRaw,
@@ -113,6 +121,7 @@ export function rowsToCulverts(rows) {
       lengthM: Number(row[col.length]),
       usilM: Number(row[col.usil]),
       dsilM: Number(row[col.dsil]),
+      coverM: Number.isFinite(coverRaw) ? coverRaw : undefined,
     });
   }
   return result;

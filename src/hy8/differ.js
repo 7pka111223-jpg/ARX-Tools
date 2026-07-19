@@ -40,10 +40,11 @@ export function diffPair(pair, doc, mode = 'name') {
   pushNumeric('channelInvertElevation', csvRow.dsilM, channelGeom[4]);
   pushNumeric('tailwaterElevation', csvRow.dsilM, twRow0[0]);
 
-  // Import also writes the standard roadway (crest = USIL + rise + 2 m
-  // cover, crest length 20 m, top width 8 m) — surface those changes too.
+  // Import also writes the standard roadway (crest = USIL + rise + cover,
+  // crest length 20 m, top width 8 m) — surface those changes too. Cover is
+  // the CSV's Average Cover column when present, else the 2 m default.
   if (crossing.roadwaySecDataLine !== -1) {
-    pushNumeric('roadwayCrestElevation', crestElevationM(csvRow.usilM, csvRow.riseM), readFloats(doc, crossing.roadwaySecDataLine)[1]);
+    pushNumeric('roadwayCrestElevation', crestElevationM(csvRow.usilM, csvRow.riseM, csvRow.coverM), readFloats(doc, crossing.roadwaySecDataLine)[1]);
   }
   if (crossing.roadwayPointLines.length) {
     pushNumeric('roadwayCrestLength', ROADWAY_CREST_LENGTH_M, readFloats(doc, crossing.roadwayPointLines[0])[0]);

@@ -37,14 +37,16 @@ test('parseCreatorRows reads both invert modes from the template examples', () =
   assert.equal(direct.invertSource, 'inverts');
   assert.equal(direct.usilM, 5.2);
   assert.equal(direct.dsilM, 4.85);
-  assert.equal(direct.crestM, 5.2 + 2.5 + 2);
+  assert.equal(direct.coverM, 2.5); // from the template's Average Cover column
+  assert.equal(direct.crestM, 5.2 + 2.5 + 2.5);
 
-  // Slope mode: DSIL = 0, USIL = slope × length.
+  // Slope mode: DSIL = 0, USIL = slope × length; blank cover -> 2 m default.
   const sloped = culverts[1];
   assert.equal(sloped.name, 'CU-EX-02');
   assert.equal(sloped.invertSource, 'slope');
   assert.equal(sloped.dsilM, 0);
   assert.equal(sloped.usilM.toFixed(6), (0.005 * 40).toFixed(6));
+  assert.equal(sloped.coverM, undefined);
   assert.equal(sloped.crestM.toFixed(6), (0.2 + 1.5 + 2).toFixed(6));
 });
 

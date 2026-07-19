@@ -58,7 +58,7 @@ function crossingLines(culvert, makeGuid) {
   const lengthFt = mToFt(culvert.lengthM);
   const spanFt = mToFt(culvert.widthM);
   const riseFt = mToFt(culvert.riseM);
-  const crestFt = mToFt(crestElevationM(culvert.usilM, culvert.riseM));
+  const crestFt = mToFt(crestElevationM(culvert.usilM, culvert.riseM, culvert.coverM));
 
   const designCfs = cmsToCfs(culvert.flowCms);
   const maxCfs = cmsToCfs(culvert.flowCms + HEADROOM_CMS);

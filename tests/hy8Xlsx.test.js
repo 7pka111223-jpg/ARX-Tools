@@ -10,7 +10,7 @@ import { makeXlsx } from './helpers/makeXlsx.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const csvFixture = readFileSync(join(__dirname, 'fixtures/hy8/Table1.csv'), 'latin1');
 
-const HEADER = ['Name', 'Comment', 'Station', 'Type', 'Cells', 'Diameter (mm)', 'Width (m)', 'Rise (m)', 'Length (m)', 'Slope (%)', 'Skewness', 'USIL (m)', 'DSIL (m)'];
+const HEADER = ['Name', 'Comment', 'Station', 'Type', 'Cells', 'Diameter (mm)', 'Width (m)', 'Rise (m)', 'Length (m)', 'Slope (%)', 'Skewness', 'USIL (m)', 'DSIL (m)', 'Average Cover (m)'];
 
 test('parseXlsxRows reads a generated workbook back as a grid', async () => {
   const buf = makeXlsx([
@@ -37,9 +37,9 @@ test('parseXlsxRows handles XML entities and empty cells', async () => {
 
 test('an .xlsx culvert schedule parses to the same culverts as the CSV equivalent', async () => {
   const buf = makeXlsx([
-    ['Culverts Data', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['Culverts Data', '', '', '', '', '', '', '', '', '', '', '', '', ''],
     HEADER,
-    ['CU-JSS-01', '-', '-2+-601', 'Box', 6, '-', 2.5, 2.5, 72.3, 0.9, 30.2, -355.29, -355.94],
+    ['CU-JSS-01', '-', '-2+-601', 'Box', 6, '-', 2.5, 2.5, 72.3, 0.9, 30.2, -355.29, -355.94, 11.7],
   ]);
   const culverts = rowsToCulverts(await parseXlsxRows(buf));
   assert.equal(culverts.length, 1);
@@ -51,6 +51,7 @@ test('an .xlsx culvert schedule parses to the same culverts as the CSV equivalen
   assert.equal(c.lengthM, 72.3);
   assert.equal(c.usilM, -355.29);
   assert.equal(c.dsilM, -355.94);
+  assert.equal(c.coverM, 11.7);
 
   // Same values the CSV fixture yields for that culvert.
   const fromCsv = parseCulvertCsv(csvFixture).find((r) => r.name === 'CU-JSS-01');

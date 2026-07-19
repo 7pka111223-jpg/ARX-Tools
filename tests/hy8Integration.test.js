@@ -126,13 +126,14 @@ test('CU-JSS-01 span/rise/cells/channel/tailwater/flow all reflect the CSV row',
   assert.equal(range[2].toFixed(6), cmsToCfs(15).toFixed(6));
 });
 
-test('CU-JSS-01 roadway becomes the standard roadway (crest = USIL + rise + 2 m)', () => {
+test('CU-JSS-01 roadway becomes the standard roadway (crest = USIL + rise + cover)', () => {
   const { finalDoc, samplePairs } = runPipeline();
   const pair = samplePairs.find((p) => p.culvert.name === 'CU-JSS-01');
   const { crossing } = pair;
 
-  // CSV row: USIL -355.29, rise 2.5 -> crest -350.79 m; length 20 m, width 8 m.
-  const crestFt = mToFt(-355.29 + 2.5 + 2);
+  // CSV row: USIL -355.29, rise 2.5, Average Cover 11.7 -> crest -341.09 m;
+  // crest length 20 m, top width 8 m.
+  const crestFt = mToFt(-355.29 + 2.5 + 11.7);
   const secData = readFloats(finalDoc, crossing.roadwaySecDataLine);
   assert.equal(secData[0].toFixed(6), '0.000000');
   assert.equal(secData[1].toFixed(6), crestFt.toFixed(6));

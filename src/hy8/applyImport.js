@@ -38,9 +38,10 @@ export function applyGeometryImport(doc, pairs, mode = 'name') {
       edits.push({ lineIndex, floats: [dsilFt, row[1], row[2], row[3]] });
     }
 
-    // Standard roadway: crest at USIL + rise + 2 m cover, crest length
-    // 20 m, top width 8 m, constant elevation profile, paved.
-    edits.push(...roadwayEdits(crossing, csvRow.usilM, csvRow.riseM));
+    // Standard roadway: crest at USIL + rise + cover (from the CSV's
+    // Average Cover column, else 2 m), crest length 20 m, top width 8 m,
+    // constant elevation profile, paved.
+    edits.push(...roadwayEdits(crossing, csvRow.usilM, csvRow.riseM, csvRow.coverM));
 
     if (mode === 'station') {
       edits.push({ lineIndex: culvert.startLine, quoted: csvRow.name });

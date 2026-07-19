@@ -1,28 +1,30 @@
 // Roadway-data policy shared by the importer, the differences panel, and
 // the project creator. Every crossing gets the same standard roadway:
 // constant roadway elevation, paved surface, crest length 20 m, top width
-// 8 m, and a crest elevation of USIL + rise + 2 m of cover — all stored in
-// the file in feet like everything else.
+// 8 m, and a crest elevation of USIL + rise + cover — all stored in the file
+// in feet like everything else. The cover comes from the culvert schedule's
+// "Average Cover (m)" column when present, falling back to a 2 m default.
 
 import { mToFt } from './units.js';
 
-export const ROADWAY_COVER_M = 2;
+export const ROADWAY_COVER_M = 2; // default cover when the schedule has none
 export const ROADWAY_CREST_LENGTH_M = 20;
 export const ROADWAY_TOP_WIDTH_M = 8;
 export const ROADWAY_SHAPE_CONSTANT = 1; // HY-8 "Constant Roadway Elevation"
 export const ROADWAY_SURFACE_PAVED = 1; // HY-8 "Paved"
 
-export function crestElevationM(usilM, riseM) {
-  return usilM + riseM + ROADWAY_COVER_M;
+export function crestElevationM(usilM, riseM, coverM = ROADWAY_COVER_M) {
+  const cover = Number.isFinite(coverM) ? coverM : ROADWAY_COVER_M;
+  return usilM + riseM + cover;
 }
 
 // patchValues() edits that normalize a crossing's roadway block to the
-// standard roadway for the given schedule USIL/rise (SI). The section data
-// point sits at station 0 and every ROADWAYPOINT at station = crest length,
-// so the profile is a flat crest of the standard length whatever the
+// standard roadway for the given schedule USIL/rise/cover (SI). The section
+// data point sits at station 0 and every ROADWAYPOINT at station = crest
+// length, so the profile is a flat crest of the standard length whatever the
 // original station count was.
-export function roadwayEdits(crossing, usilM, riseM) {
-  const crestFt = mToFt(crestElevationM(usilM, riseM));
+export function roadwayEdits(crossing, usilM, riseM, coverM) {
+  const crestFt = mToFt(crestElevationM(usilM, riseM, coverM));
   const edits = [];
   if (crossing.roadwayShapeLine !== -1) edits.push({ lineIndex: crossing.roadwayShapeLine, ints: [ROADWAY_SHAPE_CONSTANT] });
   if (crossing.surfaceLine !== -1) edits.push({ lineIndex: crossing.surfaceLine, ints: [ROADWAY_SURFACE_PAVED] });

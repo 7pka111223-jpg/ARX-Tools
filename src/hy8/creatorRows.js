@@ -35,6 +35,7 @@ export function parseCreatorRows(grid) {
     usil: findColumn(header, 'USIL (m)'),
     dsil: findColumn(header, 'DSIL (m)'),
     slope: findColumn(header, 'Slope (m/m)'),
+    cover: findColumn(header, 'Average Cover (m)') !== -1 ? findColumn(header, 'Average Cover (m)') : findColumn(header, 'Cover (m)'),
   };
 
   const culverts = [];
@@ -62,6 +63,8 @@ export function parseCreatorRows(grid) {
     const usil = num(row, col.usil);
     const dsil = num(row, col.dsil);
     const slope = num(row, col.slope);
+    const coverRaw = num(row, col.cover);
+    const coverM = coverRaw !== null && !Number.isNaN(coverRaw) ? coverRaw : undefined;
 
     if (!(widthM > 0) || !(riseM > 0)) {
       fail('cell width and height must both be positive numbers');
@@ -111,8 +114,9 @@ export function parseCreatorRows(grid) {
       lengthM,
       usilM,
       dsilM,
+      coverM,
       invertSource,
-      crestM: crestElevationM(usilM, riseM),
+      crestM: crestElevationM(usilM, riseM, coverM),
     });
   }
 

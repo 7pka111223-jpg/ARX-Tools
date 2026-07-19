@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { parseHy8 } from '../src/hy8/hy8File.js';
-import { parseCulvertCsv } from '../src/hy8/csvCulverts.js';
+import { parseHy8, readFloats } from '../src/hy8/hy8File.js';
+import { parseCulvertCsv, rowsToCulverts } from '../src/hy8/csvCulverts.js';
 import { mapCulverts } from '../src/hy8/mapper.js';
 import { diffPair } from '../src/hy8/differ.js';
+import { applyGeometryImport } from '../src/hy8/applyImport.js';
+import { mToFt } from '../src/hy8/units.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const hy8Fixture = readFileSync(join(__dirname, 'fixtures/hy8/Section_1.hy8'), 'utf8');
@@ -87,10 +89,10 @@ test('diffPair reports the roadway crest change but not the already-standard len
   const pair = pairs.find((p) => p.culvert.name === 'CU-JSS-01');
   const diffs = diffPair(pair, doc, 'name');
 
-  // Import will set the crest to USIL + rise + 2 m = -355.29 + 2.5 + 2.
+  // Import sets the crest to USIL + rise + Average Cover (11.7 in the CSV).
   const crest = diffs.find((d) => d.field === 'roadwayCrestElevation');
   assert.ok(crest);
-  assert.equal(crest.csvValue, -355.29 + 2.5 + 2);
+  assert.equal(crest.csvValue, -355.29 + 2.5 + 11.7);
   assert.equal(crest.hy8Value, 54.790026);
 
   // The fixture's crest length (65.6168 ft = 20 m) and top width
@@ -98,6 +100,45 @@ test('diffPair reports the roadway crest change but not the already-standard len
   const fields = diffs.map((d) => d.field);
   assert.ok(!fields.includes('roadwayCrestLength'));
   assert.ok(!fields.includes('roadwayTopWidth'));
+});
+
+test('an Average Cover column in the schedule drives the roadway crest', () => {
+  // A schedule matching CU-JSS-01 (USIL -355.29, rise 2.5) with cover 2.5.
+  const grid = [
+    ['Name', 'Station', 'Cells', 'Width (m)', 'Rise (m)', 'Length (m)', 'USIL (m)', 'DSIL (m)', 'Average Cover (m)'],
+    ['CU-JSS-01', '-2+-601', '6', '2.5', '2.5', '72.3', '-355.29', '-355.94', '2.5'],
+  ];
+  const rows = rowsToCulverts(grid);
+  assert.equal(rows[0].coverM, 2.5);
+
+  const doc = parseHy8(hy8Fixture);
+  const { pairs } = mapCulverts(rows, doc, { mode: 'name' });
+  const pair = pairs.find((p) => p.culvert.name === 'CU-JSS-01');
+
+  // Differences show the crest at USIL + rise + cover, not the fixed 2 m.
+  const crest = diffPair(pair, doc, 'name').find((d) => d.field === 'roadwayCrestElevation');
+  assert.equal(crest.csvValue.toFixed(2), (-355.29 + 2.5 + 2.5).toFixed(2)); // -350.29
+
+  // And the imported file writes that crest into ROADWAYSECDATA.
+  const patched = applyGeometryImport(doc, pairs, 'name');
+  const crestFt = mToFt(-355.29 + 2.5 + 2.5);
+  assert.equal(readFloats(patched, pair.crossing.roadwaySecDataLine)[1].toFixed(6), crestFt.toFixed(6));
+});
+
+test('a schedule with no cover column falls back to the 2 m default', () => {
+  // A schedule matching CU-JSS-01 but without any cover column.
+  const grid = [
+    ['Name', 'Station', 'Cells', 'Width (m)', 'Rise (m)', 'Length (m)', 'USIL (m)', 'DSIL (m)'],
+    ['CU-JSS-01', '-2+-601', '6', '2.5', '2.5', '72.3', '-355.29', '-355.94'],
+  ];
+  const rows = rowsToCulverts(grid);
+  assert.equal(rows[0].coverM, undefined);
+
+  const doc = parseHy8(hy8Fixture);
+  const { pairs } = mapCulverts(rows, doc, { mode: 'name' });
+  const pair = pairs.find((p) => p.culvert.name === 'CU-JSS-01');
+  const crest = diffPair(pair, doc, 'name').find((d) => d.field === 'roadwayCrestElevation');
+  assert.equal(crest.csvValue, -355.29 + 2.5 + 2);
 });
 
 test('diffPair reports the station label difference in name mode', () => {
