@@ -81,6 +81,25 @@ test('diffPair on CU-JSS-01 reports USIL as different but not span/rise', () => 
   assert.ok(!fields.includes('cells'));
 });
 
+test('diffPair reports the roadway crest change but not the already-standard length/width', () => {
+  const { doc, rows } = load();
+  const { pairs } = mapCulverts(rows, doc, { mode: 'name' });
+  const pair = pairs.find((p) => p.culvert.name === 'CU-JSS-01');
+  const diffs = diffPair(pair, doc, 'name');
+
+  // Import will set the crest to USIL + rise + 2 m = -355.29 + 2.5 + 2.
+  const crest = diffs.find((d) => d.field === 'roadwayCrestElevation');
+  assert.ok(crest);
+  assert.equal(crest.csvValue, -355.29 + 2.5 + 2);
+  assert.equal(crest.hy8Value, 54.790026);
+
+  // The fixture's crest length (65.6168 ft = 20 m) and top width
+  // (26.2467 ft = 8 m) already match the standard roadway — no diff.
+  const fields = diffs.map((d) => d.field);
+  assert.ok(!fields.includes('roadwayCrestLength'));
+  assert.ok(!fields.includes('roadwayTopWidth'));
+});
+
 test('diffPair reports the station label difference in name mode', () => {
   const { doc, rows } = load();
   const { pairs } = mapCulverts(rows, doc, { mode: 'name' });

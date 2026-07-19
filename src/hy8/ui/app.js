@@ -1,5 +1,8 @@
 import { parseHy8, serializeHy8 } from '../hy8File.js';
-import { parseCulvertCsv, rowsToCulverts } from '../csvCulverts.js';
+import { parseCulvertCsv, rowsToCulverts, parseCsvGrid } from '../csvCulverts.js';
+import { parseCreatorRows } from '../creatorRows.js';
+import { buildHy8Project } from '../hy8Writer.js';
+import { buildCreatorTemplateXlsx } from '../xlsxWriter.js';
 import { parseXlsxRows, rowsToText } from '../xlsx.js';
 import { mapCulverts } from '../mapper.js';
 import { diffPair } from '../differ.js';
@@ -10,6 +13,7 @@ import { buildComputedSummary, buildExtractedSummary, buildFullAnalysis } from '
 import { generateSummaryCsv, generateFullAnalysisCsv } from '../summaryExport.js';
 import { parseDocxSummaryTables } from '../docx.js';
 import { extractReportResults, generateReportCsv } from '../reportExtract.js';
+import { escapeHtml } from '../../util.js';
 import {
   renderMappingRow,
   renderUnmatchedCsvRow,
@@ -18,6 +22,7 @@ import {
   renderSummaryTable,
   renderReportTable,
   renderFullAnalysis,
+  renderCreatorTable,
 } from './render.js';
 
 export function initApp(root, { download = defaultDownload } = {}) {
@@ -35,9 +40,18 @@ export function initApp(root, { download = defaultDownload } = {}) {
     reportTables: null,
     reportFileName: null,
     fullAnalysis: null,
+    creatorCulverts: [],
+    creatorErrors: [],
+    creatorFileName: null,
   };
 
   root.innerHTML = `
+    <div class="tabs" role="tablist">
+      <button id="tabBtnImport" class="tab is-active" role="tab" aria-selected="true">Import into existing HY-8</button>
+      <button id="tabBtnCreate" class="tab" role="tab" aria-selected="false">Create new HY-8</button>
+    </div>
+
+    <div id="importTab">
     <section class="card">
       <div class="card__header">
         <h2 class="card__title">1. Load files</h2>
@@ -160,6 +174,38 @@ export function initApp(root, { download = defaultDownload } = {}) {
       <div id="reportContainer"></div>
       <p id="reportStatusMsg" class="status"></p>
     </section>
+    </div>
+
+    <div id="createTab" style="display:none">
+    <section class="card">
+      <div class="card__header">
+        <h2 class="card__title">Create a new HY-8 file</h2>
+        <span class="card__hint">One culvert per row — fully offline, nothing is uploaded</span>
+      </div>
+      <p class="hint">Download the template, fill one row per culvert (SI units), then load it back here.
+        Give <strong>USIL &amp; DSIL</strong> directly, or leave both blank and give a <strong>Slope (m/m)</strong> —
+        the downstream invert is then taken as 0 and the upstream invert as slope × length.
+        Every crossing gets the standard roadway: crest elevation = USIL + cell height + 2 m cover,
+        crest length 20 m, top width 8 m, constant roadway elevation, paved surface.</p>
+      <div class="field-row">
+        <button id="templateBtn" class="btn">Download Excel template (.xlsx)</button>
+      </div>
+      <div class="field">
+        <label for="creatorInput">Filled culvert list — CSV or Excel .xlsx (SI units)</label>
+        <input type="file" id="creatorInput" accept=".csv,.xlsx">
+        <span class="field-hint" id="creatorFileLabel">No file loaded</span>
+      </div>
+      <div id="creatorContainer"></div>
+      <div id="creatorErrors"></div>
+      <div class="field">
+        <label for="creatorProjectName">Output file name</label>
+        <input type="text" id="creatorProjectName" value="New_Project">
+        <span class="field-hint">The file downloads as &lt;name&gt;.hy8 — open it in HY-8, or load it in the other tab to analyze it.</span>
+      </div>
+      <button id="createBtn" class="btn btn-primary" disabled>Create &amp; download .hy8</button>
+      <p id="creatorStatusMsg" class="status"></p>
+    </section>
+    </div>
   `;
 
   const els = {
@@ -195,7 +241,31 @@ export function initApp(root, { download = defaultDownload } = {}) {
     exportReportBtn: root.querySelector('#exportReportBtn'),
     reportContainer: root.querySelector('#reportContainer'),
     reportStatusMsg: root.querySelector('#reportStatusMsg'),
+    tabBtnImport: root.querySelector('#tabBtnImport'),
+    tabBtnCreate: root.querySelector('#tabBtnCreate'),
+    importTab: root.querySelector('#importTab'),
+    createTab: root.querySelector('#createTab'),
+    templateBtn: root.querySelector('#templateBtn'),
+    creatorInput: root.querySelector('#creatorInput'),
+    creatorFileLabel: root.querySelector('#creatorFileLabel'),
+    creatorContainer: root.querySelector('#creatorContainer'),
+    creatorErrors: root.querySelector('#creatorErrors'),
+    creatorProjectName: root.querySelector('#creatorProjectName'),
+    createBtn: root.querySelector('#createBtn'),
+    creatorStatusMsg: root.querySelector('#creatorStatusMsg'),
   };
+
+  function selectTab(which) {
+    const showCreate = which === 'create';
+    els.importTab.style.display = showCreate ? 'none' : '';
+    els.createTab.style.display = showCreate ? '' : 'none';
+    els.tabBtnImport.classList.toggle('is-active', !showCreate);
+    els.tabBtnCreate.classList.toggle('is-active', showCreate);
+    els.tabBtnImport.setAttribute('aria-selected', String(!showCreate));
+    els.tabBtnCreate.setAttribute('aria-selected', String(showCreate));
+  }
+  els.tabBtnImport.addEventListener('click', () => selectTab('import'));
+  els.tabBtnCreate.addEventListener('click', () => selectTab('create'));
 
   function recomputeMapping() {
     state.mapResult =
@@ -557,9 +627,73 @@ export function initApp(root, { download = defaultDownload } = {}) {
     }
   });
 
+  // -- Create-new-HY8 tab --
+
+  function setCreatorGrid(grid, fileName) {
+    state.creatorFileName = fileName;
+    const { culverts, errors } = parseCreatorRows(grid);
+    state.creatorCulverts = culverts;
+    state.creatorErrors = errors;
+
+    els.creatorFileLabel.textContent =
+      `${fileName} — ${culverts.length} culvert(s) parsed` + (errors.length ? `, ${errors.length} row(s) skipped` : '');
+    els.creatorContainer.innerHTML = culverts.length ? renderCreatorTable(culverts) : '';
+    els.creatorErrors.innerHTML = errors.length
+      ? `<p class="hint">Skipped rows:</p><ul class="hint">${errors
+          .map((e) => `<li>${escapeHtml(e.name || '(unnamed)')} — ${escapeHtml(e.message)}</li>`)
+          .join('')}</ul>`
+      : '';
+    els.createBtn.disabled = culverts.length === 0;
+    els.creatorStatusMsg.textContent = '';
+  }
+
+  function runCreate() {
+    const text = buildHy8Project(state.creatorCulverts);
+    const base = (els.creatorProjectName.value || 'New_Project').trim().replace(/\.hy8$/i, '') || 'New_Project';
+    const name = `${base}.hy8`;
+    download(name, text, 'application/octet-stream');
+    els.creatorStatusMsg.textContent =
+      `Downloaded ${name} — ${state.creatorCulverts.length} crossing(s) created. Open it in HY-8, or load it in the other tab to analyze it.`;
+    els.creatorStatusMsg.className = 'status status--success';
+  }
+
+  els.templateBtn.addEventListener('click', () => {
+    download('HY8_culvert_template.xlsx', buildCreatorTemplateXlsx(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    els.creatorStatusMsg.textContent = 'Downloaded HY8_culvert_template.xlsx — fill it in and load it above.';
+    els.creatorStatusMsg.className = 'status status--success';
+  });
+
+  els.creatorInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    if (/\.xlsx$/i.test(file.name)) {
+      reader.onload = () => {
+        parseXlsxRows(reader.result)
+          .then((rows) => setCreatorGrid(rows, file.name))
+          .catch((err) => {
+            els.creatorFileLabel.textContent = `Could not read ${file.name}: ${err.message}`;
+          });
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload = () => setCreatorGrid(parseCsvGrid(reader.result), file.name);
+      reader.readAsText(file, 'iso-8859-1');
+    }
+  });
+
+  els.createBtn.addEventListener('click', () => {
+    try {
+      runCreate();
+    } catch (err) {
+      els.creatorStatusMsg.textContent = `Create failed: ${err.message}`;
+      els.creatorStatusMsg.className = 'status status--error';
+    }
+  });
+
   render();
 
-  return { state, setCsvText, setCsvRows, setHy8Text, setReportDocx, recomputeMapping, runImport };
+  return { state, setCsvText, setCsvRows, setHy8Text, setReportDocx, setCreatorGrid, runCreate, selectTab, recomputeMapping, runImport };
 }
 
 function downloadName(originalName, suffix) {

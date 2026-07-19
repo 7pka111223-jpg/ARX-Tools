@@ -47,6 +47,11 @@ function parseCrossing(lines, startIdx) {
   let numRatingCurveLine = -1;
   let numRatingCurveValue = 0;
   let twRatingCurveLines = [];
+  let roadwayShapeLine = -1;
+  let roadWidthLine = -1;
+  let surfaceLine = -1;
+  let roadwaySecDataLine = -1;
+  const roadwayPointLines = [];
   let culvertStartLine = -1;
   let culvertEndLine = -1;
   let culvertName = null;
@@ -90,6 +95,11 @@ function parseCrossing(lines, startIdx) {
       ratingCurve.push(pendingRating);
       pendingRating = null;
     }
+    if (tok === 'ROADWAYSHAPE' && roadwayShapeLine === -1) roadwayShapeLine = i;
+    if (tok === 'ROADWIDTH' && roadWidthLine === -1) roadWidthLine = i;
+    if (tok === 'SURFACE' && surfaceLine === -1) surfaceLine = i;
+    if (tok === 'ROADWAYSECDATA' && roadwaySecDataLine === -1) roadwaySecDataLine = i;
+    if (tok === 'ROADWAYPOINT') roadwayPointLines.push(i);
     if (tok === 'STARTCULVERT' && culvertStartLine === -1) {
       culvertStartLine = i;
       culvertName = extractQuoted(lines[i]);
@@ -114,6 +124,11 @@ function parseCrossing(lines, startIdx) {
     numRatingCurveLine,
     numRatingCurveValue,
     twRatingCurveLines,
+    roadwayShapeLine,
+    roadWidthLine,
+    surfaceLine,
+    roadwaySecDataLine,
+    roadwayPointLines,
     ratingCurve,
     culverts: [
       {

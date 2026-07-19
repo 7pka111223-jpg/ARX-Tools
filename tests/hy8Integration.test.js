@@ -48,6 +48,11 @@ test('headless pipeline: only the 3 sample culverts change, everything else is b
         ...c.dischargeXYDesignYLines,
         c.channelGeometryLine,
         ...c.twRatingCurveLines,
+        c.roadwayShapeLine,
+        c.roadWidthLine,
+        c.surfaceLine,
+        c.roadwaySecDataLine,
+        ...c.roadwayPointLines,
         culvert.startLine,
         culvert.endLine,
         culvert.invertDataLine,
@@ -119,6 +124,28 @@ test('CU-JSS-01 span/rise/cells/channel/tailwater/flow all reflect the CSV row',
   assert.equal(range[0].toFixed(6), '0.000000');
   assert.equal(range[1].toFixed(6), cmsToCfs(10).toFixed(6));
   assert.equal(range[2].toFixed(6), cmsToCfs(15).toFixed(6));
+});
+
+test('CU-JSS-01 roadway becomes the standard roadway (crest = USIL + rise + 2 m)', () => {
+  const { finalDoc, samplePairs } = runPipeline();
+  const pair = samplePairs.find((p) => p.culvert.name === 'CU-JSS-01');
+  const { crossing } = pair;
+
+  // CSV row: USIL -355.29, rise 2.5 -> crest -350.79 m; length 20 m, width 8 m.
+  const crestFt = mToFt(-355.29 + 2.5 + 2);
+  const secData = readFloats(finalDoc, crossing.roadwaySecDataLine);
+  assert.equal(secData[0].toFixed(6), '0.000000');
+  assert.equal(secData[1].toFixed(6), crestFt.toFixed(6));
+
+  for (const lineIndex of crossing.roadwayPointLines) {
+    const point = readFloats(finalDoc, lineIndex);
+    assert.equal(point[0].toFixed(6), mToFt(20).toFixed(6));
+    assert.equal(point[1].toFixed(6), crestFt.toFixed(6));
+  }
+
+  assert.equal(readFloats(finalDoc, crossing.roadWidthLine)[0].toFixed(6), mToFt(8).toFixed(6));
+  assert.equal(readInt(finalDoc, crossing.roadwayShapeLine), 1); // constant roadway elevation
+  assert.equal(readInt(finalDoc, crossing.surfaceLine), 1); // paved
 });
 
 test('NUMCROSSINGS and the untouched CU-JSS-38 crossing are unchanged', () => {

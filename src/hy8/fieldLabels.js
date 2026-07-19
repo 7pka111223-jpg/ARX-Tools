@@ -10,6 +10,9 @@ export const FIELD_LABELS = {
   cells: 'Cells / barrels',
   channelInvertElevation: 'Channel invert elevation',
   tailwaterElevation: 'Constant tailwater elevation',
+  roadwayCrestElevation: 'Roadway crest elevation',
+  roadwayCrestLength: 'Roadway crest length',
+  roadwayTopWidth: 'Roadway top width',
   station: 'Station label',
   name: 'Culvert name',
 };

@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { JSDOM } from 'jsdom';
 import { initApp } from '../src/hy8/ui/app.js';
-import { serializeHy8 } from '../src/hy8/hy8File.js';
+import { serializeHy8, parseHy8 } from '../src/hy8/hy8File.js';
+import { parseXlsxRows } from '../src/hy8/xlsx.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const hy8Fixture = readFileSync(join(__dirname, 'fixtures/hy8/Section_1.hy8'), 'utf8');
@@ -299,4 +300,71 @@ test('changing the mapping clears a stale summary', () => {
 
   assert.equal(root.querySelector('#summaryResultTable'), null);
   assert.equal(root.querySelector('#exportSummaryBtn').disabled, true);
+});
+
+test('the create tab is hidden by default and shown by its tab button', () => {
+  const { root } = makeApp();
+  assert.equal(root.querySelector('#createTab').style.display, 'none');
+  assert.notEqual(root.querySelector('#importTab').style.display, 'none');
+
+  root.querySelector('#tabBtnCreate').dispatchEvent(new window.Event('click'));
+  assert.notEqual(root.querySelector('#createTab').style.display, 'none');
+  assert.equal(root.querySelector('#importTab').style.display, 'none');
+  assert.ok(root.querySelector('#tabBtnCreate').classList.contains('is-active'));
+
+  root.querySelector('#tabBtnImport').dispatchEvent(new window.Event('click'));
+  assert.equal(root.querySelector('#createTab').style.display, 'none');
+});
+
+test('the template button downloads a valid .xlsx our own reader can parse', async () => {
+  const { root, downloads } = makeApp();
+  root.querySelector('#templateBtn').dispatchEvent(new window.Event('click'));
+  assert.equal(downloads.length, 1);
+  assert.equal(downloads[0].name, 'HY8_culvert_template.xlsx');
+  assert.equal(downloads[0].mime, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+  const bytes = downloads[0].text;
+  const grid = await parseXlsxRows(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  assert.equal(grid[1][0], 'Name');
+  assert.equal(grid[1][8], 'Slope (m/m)');
+});
+
+test('loading a creator list previews rows, reports errors, and creates a parseable .hy8', () => {
+  const { root, app, downloads } = makeApp();
+  assert.equal(root.querySelector('#createBtn').disabled, true);
+
+  app.setCreatorGrid(
+    [
+      ['Name', 'Design Flow (m3/s)', 'Cells', 'Width (m)', 'Rise (m)', 'Length (m)', 'USIL (m)', 'DSIL (m)', 'Slope (m/m)'],
+      ['CU-NEW-01', '10', '2', '2.5', '2.5', '72.3', '5.2', '4.85', ''],
+      ['CU-NEW-02', '5', '1', '1.5', '1.5', '40', '', '', '0.005'],
+      ['CU-BAD', '5', '1', '1.5', '1.5', '40', '', '', ''],
+    ],
+    'list.csv'
+  );
+
+  assert.equal(app.state.creatorCulverts.length, 2);
+  assert.equal(app.state.creatorErrors.length, 1);
+  assert.ok(root.querySelector('#creatorFileLabel').textContent.includes('2 culvert(s) parsed'));
+  assert.ok(root.querySelector('#creatorErrors').textContent.includes('CU-BAD'));
+  const preview = root.querySelector('#creatorResultTable');
+  assert.equal(preview.querySelectorAll('tbody tr').length, 2);
+  // Slope row's derived inverts and crest show in the preview (SI).
+  assert.ok(preview.textContent.includes('0.200'));
+  assert.ok(preview.textContent.includes('3.700'));
+  assert.equal(root.querySelector('#createBtn').disabled, false);
+
+  root.querySelector('#creatorProjectName').value = 'Section_9';
+  root.querySelector('#createBtn').dispatchEvent(new window.Event('click'));
+  assert.equal(downloads.length, 1);
+  assert.equal(downloads[0].name, 'Section_9.hy8');
+
+  const doc = parseHy8(downloads[0].text);
+  assert.equal(doc.crossings.length, 2);
+  assert.equal(doc.crossings[0].culverts[0].name, 'CU-NEW-01');
+  assert.ok(downloads[0].text.endsWith('ENDPROJECTFILE'));
+
+  // The created file loads straight back into the import tab for analysis.
+  app.setHy8Text(downloads[0].text, 'Section_9.hy8');
+  assert.equal(app.state.hy8Doc.crossings.length, 2);
 });

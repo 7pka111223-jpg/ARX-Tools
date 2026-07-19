@@ -5,6 +5,7 @@
 
 import { mToFt, ftToM } from './units.js';
 import { readFloats, readInt } from './hy8File.js';
+import { crestElevationM, ROADWAY_CREST_LENGTH_M, ROADWAY_TOP_WIDTH_M } from './roadway.js';
 
 const TOL_FT = 0.01;
 
@@ -38,6 +39,18 @@ export function diffPair(pair, doc, mode = 'name') {
   pushNumeric('rise', csvRow.riseM, barrel[1]);
   pushNumeric('channelInvertElevation', csvRow.dsilM, channelGeom[4]);
   pushNumeric('tailwaterElevation', csvRow.dsilM, twRow0[0]);
+
+  // Import also writes the standard roadway (crest = USIL + rise + 2 m
+  // cover, crest length 20 m, top width 8 m) — surface those changes too.
+  if (crossing.roadwaySecDataLine !== -1) {
+    pushNumeric('roadwayCrestElevation', crestElevationM(csvRow.usilM, csvRow.riseM), readFloats(doc, crossing.roadwaySecDataLine)[1]);
+  }
+  if (crossing.roadwayPointLines.length) {
+    pushNumeric('roadwayCrestLength', ROADWAY_CREST_LENGTH_M, readFloats(doc, crossing.roadwayPointLines[0])[0]);
+  }
+  if (crossing.roadWidthLine !== -1) {
+    pushNumeric('roadwayTopWidth', ROADWAY_TOP_WIDTH_M, readFloats(doc, crossing.roadWidthLine)[0]);
+  }
 
   if (Number(csvRow.cells) !== cells) {
     // Dimensionless — no unit conversion, so hy8ValueSI === hy8Value.

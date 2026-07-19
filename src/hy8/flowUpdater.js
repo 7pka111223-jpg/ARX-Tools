@@ -24,8 +24,9 @@ export function parseFlowInput(text) {
 }
 
 // 11 values evenly spaced 0..maxCfs, with the slot nearest designCfs
-// replaced by the exact design value.
-function regenerateDesignY(maxCfs, designCfs, count) {
+// replaced by the exact design value. Shared with the project creator
+// (hy8Writer.js) so created and imported files get identical flow tables.
+export function regenerateDesignY(maxCfs, designCfs, count) {
   const step = maxCfs / (count - 1);
   const values = Array.from({ length: count }, (_, i) => i * step);
   let nearestIdx = 0;

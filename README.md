@@ -47,6 +47,11 @@ list accept CSV or `.xlsx` (first worksheet; legacy `.xls` is not supported).
   label from whichever mode wasn't used for matching is overwritten from the
   CSV too (name mode updates the crossing's station label; station mode
   updates the culvert name).
+- **Roadway data**: every imported crossing also gets the standard roadway —
+  crest elevation = USIL + cell height + 2 m of cover, crest length 20 m,
+  top width 8 m, profile shape "constant roadway elevation", paved surface.
+  Roadway fields that would change appear in the differences report like any
+  other field.
 - **Differences report**: before importing, review every field that would
   change (tolerance ~0.003 m), shown as CSV value and current HY-8 value —
   both in SI, side by side. Click **Export differences as CSV** to download
@@ -100,6 +105,22 @@ list accept CSV or `.xlsx` (first worksheet; legacy `.xls` is not supported).
   rise, with the rise taken from the loaded culvert schedule (matched by
   culvert name) or from the `.hy8` file's `BARRELDATA` when no schedule is
   loaded.
+- **Create a new HY-8 file**: the "Create new HY-8" tab builds a complete
+  `.hy8` project from scratch out of a culvert list — no starting HY-8 file
+  needed. Click **Download Excel template (.xlsx)** to get a template with
+  one row per culvert (SI units): name, design flow, cells, cell width and
+  height, length, and the inverts. Give USIL & DSIL directly, or leave both
+  blank and give a **Slope (m/m)** instead — the downstream invert is then
+  written as 0 and the upstream invert as slope × length. Fill it in
+  (CSV works too), load it back, review the parsed preview (including each
+  crossing's derived roadway crest), name the file, and download. Every
+  crossing is created as a concrete box culvert (square-edge headwall inlet,
+  n = 0.015) with a constant tailwater at the outlet invert, an 11-point
+  flow table (min 0, max = design + 5 m³/s, as on import), and the same
+  standard roadway as above. Rows with problems (missing inverts and slope,
+  only one invert, non-positive sizes, duplicate names) are listed and
+  skipped rather than silently written. The created file opens in HY-8 and
+  also loads straight back into the import tab for analysis.
 - **Units**: the whole UI — file labels, the differences panel, the culvert
   summary, and the exported CSVs — is SI throughout (meters, m³/s). The
   `.hy8` file itself always stores US customary units (feet, cfs) regardless

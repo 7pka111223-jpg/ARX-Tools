@@ -96,6 +96,7 @@
   .field { margin-bottom: 14px; }
   .field label { display: block; font-size: 12.5px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px; }
   .field input[type="file"],
+  .field input[type="text"],
   .field input[type="number"] {
     width: 100%;
     padding: 8px 10px;
@@ -106,6 +107,27 @@
     color: var(--color-text);
   }
   .field-hint { display: block; font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px; }
+
+  .tabs { display: flex; gap: 6px; margin-bottom: 20px; border-bottom: 1px solid var(--color-border); }
+  .tab {
+    appearance: none;
+    border: 1px solid transparent;
+    border-bottom: none;
+    background: none;
+    color: var(--color-text-secondary);
+    font-size: 13.5px;
+    font-weight: 600;
+    padding: 9px 16px;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    cursor: pointer;
+  }
+  .tab:hover { color: var(--color-text); }
+  .tab.is-active {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+    color: var(--color-primary);
+    margin-bottom: -1px;
+  }
 
   .field-row { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 14px; }
   .field-checkbox { display: flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--color-text); }
@@ -172,6 +194,10 @@
   #reportResultTable { min-width: 720px; }
   #exportReportBtn { margin-top: 4px; }
 
+  #creatorContainer { overflow-x: auto; margin-top: 12px; }
+  #creatorResultTable { min-width: 760px; }
+  #creatorProjectName { max-width: 320px; }
+
   #analysisContainer { margin-top: 12px; }
   .analysis-block { border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 8px; }
   .analysis-block summary { padding: 10px 12px; cursor: pointer; font-size: 13.5px; font-weight: 600; }
@@ -190,7 +216,7 @@
     </span>
     <div>
       <h1>HY-8 CSV Importer</h1>
-      <p>Map a culvert schedule CSV into an HY-8 project file, review differences, set design flows, and analyze culverts — fully offline</p>
+      <p>Map a culvert schedule into an HY-8 project file — or create a new HY-8 file from a culvert list — review differences, set design flows, and analyze culverts, fully offline</p>
     </div>
   </header>
   <div id="app"></div>

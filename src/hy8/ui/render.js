@@ -78,6 +78,21 @@ export function renderReportTable(rows) {
   </table>`;
 }
 
+// Preview of the parsed project-creator culvert list — everything in SI.
+// Slope-mode rows show the derived inverts (DSIL 0, USIL = slope × length).
+export function renderCreatorTable(culverts) {
+  const body = culverts
+    .map(
+      (c) =>
+        `<tr><td>${escapeHtml(c.name)}</td><td>${numCell(c.flowCms)}</td><td>${String(c.cells)}</td><td>${numCell(c.widthM)}</td><td>${numCell(c.riseM)}</td><td>${numCell(c.lengthM)}</td><td>${numCell(c.usilM)}</td><td>${numCell(c.dsilM)}</td><td>${numCell(c.crestM)}</td><td>${escapeHtml(c.invertSource === 'slope' ? 'slope' : 'USIL/DSIL')}</td></tr>`
+    )
+    .join('');
+  return `<table class="diff-table" id="creatorResultTable">
+    <thead><tr><th>Culvert</th><th>Q (m³/s)</th><th>Cells</th><th>Width (m)</th><th>Rise (m)</th><th>Length (m)</th><th>USIL (m)</th><th>DSIL (m)</th><th>Roadway crest (m)</th><th>Inverts from</th></tr></thead>
+    <tbody>${body}</tbody>
+  </table>`;
+}
+
 export function renderDiffSection(culvertLabel, diffs) {
   const rows = diffs
     .map(

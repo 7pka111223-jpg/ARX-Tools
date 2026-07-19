@@ -8,7 +8,10 @@
 
 import { parseStationMeters } from './units.js';
 
-function parseCsv(text) {
+// Tokenizes CSV text into a raw string grid. Exported for other CSV inputs
+// (e.g. the project-creator culvert list) so quoting/CRLF handling stays in
+// one place.
+export function parseCsvGrid(text) {
   const rows = [];
   let row = [];
   let field = '';
@@ -116,6 +119,6 @@ export function rowsToCulverts(rows) {
 }
 
 export function parseCulvertCsv(text) {
-  const rows = parseCsv(text).filter((r) => !(r.length === 1 && r[0] === ''));
+  const rows = parseCsvGrid(text).filter((r) => !(r.length === 1 && r[0] === ''));
   return rowsToCulverts(rows);
 }

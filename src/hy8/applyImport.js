@@ -3,6 +3,7 @@
 
 import { mToFt } from './units.js';
 import { patchValues, readFloats } from './hy8File.js';
+import { roadwayEdits } from './roadway.js';
 
 // mode is the mapping mode used to produce `pairs` ('name' or 'station').
 // The label field NOT used for matching gets overwritten from the CSV:
@@ -36,6 +37,10 @@ export function applyGeometryImport(doc, pairs, mode = 'name') {
       const row = readFloats(doc, lineIndex);
       edits.push({ lineIndex, floats: [dsilFt, row[1], row[2], row[3]] });
     }
+
+    // Standard roadway: crest at USIL + rise + 2 m cover, crest length
+    // 20 m, top width 8 m, constant elevation profile, paved.
+    edits.push(...roadwayEdits(crossing, csvRow.usilM, csvRow.riseM));
 
     if (mode === 'station') {
       edits.push({ lineIndex: culvert.startLine, quoted: csvRow.name });
