@@ -16,6 +16,7 @@ import { extractReportResults } from '../reportExtract.js';
 import { geometryByName } from '../geometry.js';
 import { runChecks, countFailures, DEFAULT_THRESHOLDS } from '../checks.js';
 import { buildReportExcel, buildChecksExcel } from '../excelReports.js';
+import { browserMachineId, verifyLicenseKey, LICENSE_STORAGE_KEY } from '../license.js';
 import { escapeHtml } from '../../util.js';
 import {
   renderMappingRow,
@@ -29,7 +30,9 @@ import {
   renderChecksTable,
 } from './render.js';
 
-export function initApp(root, { download = defaultDownload } = {}) {
+// license: false disables the gate (unit tests of the tool itself);
+// machineId overrides the derived fingerprint (gate tests).
+export function initApp(root, { download = defaultDownload, license = true, machineId = null } = {}) {
   const state = {
     csvFileName: null,
     hy8FileName: null,
@@ -53,6 +56,30 @@ export function initApp(root, { download = defaultDownload } = {}) {
   };
 
   root.innerHTML = `
+    <section class="card license-gate" id="licenseGate" style="display:none">
+      <div class="card__header">
+        <h2 class="card__title">License required</h2>
+      </div>
+      <p class="hint">This copy of the HY-8 tool is locked. Send the Machine ID below to ARX to
+        receive a license key, then paste the key here to activate. Activation is fully offline —
+        nothing leaves this browser.</p>
+      <div class="field">
+        <label>Machine ID</label>
+        <div class="machine-id-row">
+          <code id="machineIdLabel"></code>
+          <button id="copyMachineIdBtn" class="btn">Copy</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="licenseKeyInput">License key</label>
+        <textarea id="licenseKeyInput" rows="5" placeholder="Paste your license key"></textarea>
+      </div>
+      <button id="activateBtn" class="btn btn-primary">Activate</button>
+      <p id="licenseGateMsg" class="status"></p>
+    </section>
+
+    <div id="appBody" style="display:none">
+    <p id="licenseInfo" class="license-info"></p>
     <div class="tabs" role="tablist">
       <button id="tabBtnImport" class="tab is-active" role="tab" aria-selected="true">Import into existing HY-8</button>
       <button id="tabBtnCreate" class="tab" role="tab" aria-selected="false">Create new HY-8</button>
@@ -256,6 +283,7 @@ export function initApp(root, { download = defaultDownload } = {}) {
       <p id="checksStatusMsg" class="status"></p>
     </section>
     </div>
+    </div>
   `;
 
   const els = {
@@ -314,7 +342,100 @@ export function initApp(root, { download = defaultDownload } = {}) {
     exportChecksBtn: root.querySelector('#exportChecksBtn'),
     checksContainer: root.querySelector('#checksContainer'),
     checksStatusMsg: root.querySelector('#checksStatusMsg'),
+    licenseGate: root.querySelector('#licenseGate'),
+    machineIdLabel: root.querySelector('#machineIdLabel'),
+    copyMachineIdBtn: root.querySelector('#copyMachineIdBtn'),
+    licenseKeyInput: root.querySelector('#licenseKeyInput'),
+    activateBtn: root.querySelector('#activateBtn'),
+    licenseGateMsg: root.querySelector('#licenseGateMsg'),
+    appBody: root.querySelector('#appBody'),
+    licenseInfo: root.querySelector('#licenseInfo'),
   };
+
+  // -- Licensing gate --
+  // The tool stays hidden until a signed license key matching this machine's
+  // fingerprint (and still within its validity period) is activated. The key
+  // is remembered locally and re-verified on every load, so an expired key
+  // locks the tool again.
+
+  const gateMachineId = machineId || browserMachineId();
+  state.licensed = license === false;
+  state.licenseExpires = null;
+
+  function storageGet() {
+    try {
+      return window.localStorage.getItem(LICENSE_STORAGE_KEY);
+    } catch {
+      return null;
+    }
+  }
+  function storageSet(value) {
+    try {
+      window.localStorage.setItem(LICENSE_STORAGE_KEY, value);
+    } catch {
+      /* private-mode or blocked storage: activation just won't persist */
+    }
+  }
+
+  function applyLicenseState() {
+    els.licenseGate.style.display = state.licensed ? 'none' : '';
+    els.appBody.style.display = state.licensed ? '' : 'none';
+    els.machineIdLabel.textContent = gateMachineId;
+    els.licenseInfo.textContent =
+      state.licensed && state.licenseExpires
+        ? `Licensed to machine ${gateMachineId} — valid through ${state.licenseExpires}`
+        : '';
+  }
+
+  function tryActivate(key, { persist = true, silent = false } = {}) {
+    const result = verifyLicenseKey(key, gateMachineId);
+    if (result.valid) {
+      state.licensed = true;
+      state.licenseExpires = result.expires;
+      if (persist) storageSet(String(key).replace(/\s+/g, ''));
+      applyLicenseState();
+      return true;
+    }
+    if (!silent) {
+      els.licenseGateMsg.textContent = `Activation failed: ${result.reason}.`;
+      els.licenseGateMsg.className = 'status status--error';
+    } else if (result.expires) {
+      // A previously working key that no longer validates (usually expired):
+      // explain why the tool re-locked instead of showing a blank gate.
+      els.licenseGateMsg.textContent = `Your license is no longer valid: ${result.reason}.`;
+      els.licenseGateMsg.className = 'status status--error';
+    }
+    return false;
+  }
+
+  if (license !== false) {
+    const stored = storageGet();
+    if (stored) tryActivate(stored, { persist: false, silent: true });
+  }
+  applyLicenseState();
+
+  els.activateBtn.addEventListener('click', () => {
+    if (tryActivate(els.licenseKeyInput.value)) {
+      els.licenseGateMsg.textContent = '';
+    }
+  });
+  els.copyMachineIdBtn.addEventListener('click', () => {
+    const copied = (() => {
+      try {
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(gateMachineId);
+          return true;
+        }
+      } catch {
+        /* fall through to the message below */
+      }
+      return false;
+    })();
+    els.licenseGateMsg.textContent = copied
+      ? 'Machine ID copied to clipboard.'
+      : `Machine ID: ${gateMachineId} (select and copy it manually)`;
+    els.licenseGateMsg.className = 'status';
+  });
 
   const TABS = {
     import: { btn: els.tabBtnImport, panel: els.importTab },
@@ -882,6 +1003,8 @@ export function initApp(root, { download = defaultDownload } = {}) {
 
   return {
     state,
+    machineId: gateMachineId,
+    tryActivate,
     setCsvText,
     setCsvRows,
     setHy8Text,

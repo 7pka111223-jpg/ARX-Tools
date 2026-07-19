@@ -21,11 +21,13 @@ function setupDom() {
   return dom;
 }
 
+// license: false — the licensing gate has its own suite (hy8License.test.js);
+// these tests exercise the tool itself.
 function makeApp() {
   setupDom();
   const root = document.getElementById('app');
   const downloads = [];
-  const app = initApp(root, { download: (name, text, mime) => downloads.push({ name, text, mime }) });
+  const app = initApp(root, { download: (name, text, mime) => downloads.push({ name, text, mime }), license: false });
   return { root, app, downloads };
 }
 

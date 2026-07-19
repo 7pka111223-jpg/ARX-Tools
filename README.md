@@ -156,6 +156,37 @@ No data leaves the browser — the CSV and `.hy8` file are read and written
 entirely client-side, and the tool works from a double-clicked `file://`
 copy of `dist/hy8-importer.html`.
 
+### Licensing
+
+The tool is locked behind an offline license key. On first open it shows a
+lock screen with this installation's **Machine ID** (a deterministic
+fingerprint of stable browser/host properties — it survives cache clearing,
+but each browser on a machine has its own ID). The customer sends that ID to
+ARX, receives a license key, pastes it, and clicks **Activate**. The key is a
+compact RSA-2048-signed token binding the Machine ID and an expiry date; the
+page verifies the signature offline against the embedded *public* key,
+remembers the key locally, and re-verifies on every load — an expired key
+locks the tool again with an explanation. Keys issued for a different
+machine, tampered keys, and past-expiry keys are all rejected. Keys issued
+for machine `ANY` work on every machine (for internal/floating use).
+
+Keys are generated with the vendor app `tools/hy8_license_admin.py` —
+**vendor side only, it embeds the private signing key; never ship it (or an
+.exe built from it) to customers**:
+
+    # GUI (Machine ID + period in days or an expiry date -> license key)
+    python tools/hy8_license_admin.py
+
+    # command line
+    python tools/hy8_license_admin.py --machine A1B2-C3D4-E5F6-A7B8 --days 365
+
+Build the standalone Windows generator (`ARX-HY8-License-Admin.exe`) on any
+Windows machine with `pip install pyinstaller` then
+`tools\build_hy8_license_exe.bat` — the .exe needs no Python install to run.
+Note the honest limits of client-side licensing: the gate deters casual
+sharing, but anyone able to read the page source can bypass it — the private
+key never being in the page is what it guarantees.
+
 ### Try it
 
 1. `npm run build` (or use an already-built `dist/hy8-importer.html`) and
