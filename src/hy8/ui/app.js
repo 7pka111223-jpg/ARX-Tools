@@ -17,6 +17,7 @@ import { geometryByName } from '../geometry.js';
 import { runChecks, countFailures, DEFAULT_THRESHOLDS } from '../checks.js';
 import { buildReportExcel, buildChecksExcel } from '../excelReports.js';
 import { browserMachineId, verifyLicenseKey, LICENSE_STORAGE_KEY } from '../license.js';
+import { PAYMENT_CONFIG, PLANS, paymentConfigured, serverConfigured, requestLicense, checkLicenseStatus } from '../payment.js';
 import { escapeHtml } from '../../util.js';
 import {
   renderMappingRow,
@@ -69,6 +70,11 @@ export function initApp(root, { download = defaultDownload, license = true, mach
           <code id="machineIdLabel"></code>
           <button id="copyMachineIdBtn" class="btn">Copy</button>
         </div>
+      </div>
+      <div class="field">
+        <label>Subscribe</label>
+        <div class="plan-row" id="planRow"></div>
+        <div id="paymentDetails"></div>
       </div>
       <div class="field">
         <label for="licenseKeyInput">License key</label>
@@ -343,6 +349,8 @@ export function initApp(root, { download = defaultDownload, license = true, mach
     checksContainer: root.querySelector('#checksContainer'),
     checksStatusMsg: root.querySelector('#checksStatusMsg'),
     licenseGate: root.querySelector('#licenseGate'),
+    planRow: root.querySelector('#planRow'),
+    paymentDetails: root.querySelector('#paymentDetails'),
     machineIdLabel: root.querySelector('#machineIdLabel'),
     copyMachineIdBtn: root.querySelector('#copyMachineIdBtn'),
     licenseKeyInput: root.querySelector('#licenseKeyInput'),
@@ -385,6 +393,119 @@ export function initApp(root, { download = defaultDownload, license = true, mach
       state.licensed && state.licenseExpires
         ? `Licensed to machine ${gateMachineId} — valid through ${state.licenseExpires}`
         : '';
+    renderPlans();
+  }
+
+  // -- Payment (InstaPay + license server) --
+
+  let selectedPlanId = null;
+  let paymentTimer = null;
+
+  function stopPaymentPolling() {
+    if (paymentTimer) {
+      clearInterval(paymentTimer);
+      paymentTimer = null;
+    }
+  }
+
+  function renderPlans() {
+    if (!paymentConfigured()) {
+      els.planRow.innerHTML =
+        '<span class="hint">Online payment is not configured in this build — send the Machine ID above to ARX to purchase a license key.</span>';
+      els.paymentDetails.innerHTML = '';
+      return;
+    }
+    els.planRow.innerHTML = PLANS.map(
+      (plan) =>
+        `<button type="button" class="plan-card${plan.id === selectedPlanId ? ' is-selected' : ''}" data-plan="${plan.id}">
+          <span class="plan-card__label">${escapeHtml(plan.label)}</span>
+          <span class="plan-card__price">$${plan.usd}</span>
+          <span class="plan-card__note">EGP ${plan.egp} via InstaPay</span>
+        </button>`
+    ).join('');
+    for (const btn of els.planRow.querySelectorAll('[data-plan]')) {
+      btn.addEventListener('click', () => selectPlan(btn.getAttribute('data-plan')));
+    }
+    renderPaymentDetails();
+  }
+
+  function renderPaymentDetails() {
+    const plan = PLANS.find((p) => p.id === selectedPlanId);
+    if (!plan) {
+      els.paymentDetails.innerHTML = '<span class="field-hint">Choose a plan to see the payment steps.</span>';
+      return;
+    }
+    const linkHtml = PAYMENT_CONFIG.instapayPaymentLink
+      ? `<p>Or open the payment link: <a href="${escapeHtml(PAYMENT_CONFIG.instapayPaymentLink)}" target="_blank" rel="noopener">${escapeHtml(PAYMENT_CONFIG.instapayPaymentLink)}</a></p>`
+      : '';
+    const confirmHtml = serverConfigured()
+      ? `<p><strong>3.</strong> Click the button below — the tool will confirm your payment online and activate
+          itself for ${plan.days} days as soon as the transfer is verified.</p>
+         <button type="button" id="paidBtn" class="btn btn-primary">I've paid — confirm my payment</button>
+         <p id="paymentStatusMsg" class="status"></p>`
+      : `<p><strong>3.</strong> After paying, send your Machine ID <code>${escapeHtml(gateMachineId)}</code> to ARX
+          and you'll receive your ${plan.days}-day license key to paste above.</p>`;
+    els.paymentDetails.innerHTML = `
+      <div class="payment-box">
+        <p><strong>1.</strong> In your banking or InstaPay app, transfer <strong>EGP ${plan.egp}</strong>
+          (${plan.label} — $${plan.usd}) to <code>${escapeHtml(PAYMENT_CONFIG.instapayAddress)}</code>.</p>
+        ${linkHtml}
+        <p><strong>2.</strong> Put your Machine ID <code>${escapeHtml(gateMachineId)}</code> in the transfer note —
+          that's how your payment is matched to this installation.</p>
+        ${confirmHtml}
+      </div>`;
+    const paidBtn = els.paymentDetails.querySelector('#paidBtn');
+    if (paidBtn) paidBtn.addEventListener('click', () => startPaymentConfirmation(plan));
+  }
+
+  function selectPlan(planId) {
+    selectedPlanId = planId;
+    stopPaymentPolling();
+    renderPlans();
+  }
+
+  function setPaymentStatus(text, cls = 'status') {
+    const msg = els.paymentDetails.querySelector('#paymentStatusMsg');
+    if (msg) {
+      msg.textContent = text;
+      msg.className = cls;
+    }
+  }
+
+  // Polls the license server until the vendor confirms the transfer; the
+  // returned key goes through the normal activation path (signature +
+  // machine + expiry checks), so the server is trusted only as a courier.
+  async function checkPayment() {
+    try {
+      const status = await checkLicenseStatus(gateMachineId);
+      if (status.status === 'approved' && status.key) {
+        stopPaymentPolling();
+        if (tryActivate(status.key)) {
+          els.licenseGateMsg.textContent = '';
+          return 'activated';
+        }
+        setPaymentStatus('The server sent a key, but it did not validate for this machine — contact ARX.', 'status status--error');
+        return 'bad-key';
+      }
+      setPaymentStatus('Waiting for your payment to be confirmed… this page checks automatically every few seconds.');
+      return status.status;
+    } catch (err) {
+      setPaymentStatus(`Could not reach the license server: ${err.message}. Retrying…`, 'status status--error');
+      return 'error';
+    }
+  }
+
+  async function startPaymentConfirmation(plan) {
+    setPaymentStatus('Registering your payment…');
+    try {
+      await requestLicense(gateMachineId, plan.id);
+    } catch (err) {
+      setPaymentStatus(`Could not reach the license server: ${err.message}`, 'status status--error');
+      return;
+    }
+    await checkPayment();
+    stopPaymentPolling();
+    paymentTimer = setInterval(checkPayment, 10000);
   }
 
   function tryActivate(key, { persist = true, silent = false } = {}) {
@@ -393,6 +514,7 @@ export function initApp(root, { download = defaultDownload, license = true, mach
       state.licensed = true;
       state.licenseExpires = result.expires;
       if (persist) storageSet(String(key).replace(/\s+/g, ''));
+      stopPaymentPolling();
       applyLicenseState();
       return true;
     }
@@ -1005,6 +1127,8 @@ export function initApp(root, { download = defaultDownload, license = true, mach
     state,
     machineId: gateMachineId,
     tryActivate,
+    selectPlan,
+    checkPayment,
     setCsvText,
     setCsvRows,
     setHy8Text,

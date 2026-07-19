@@ -187,6 +187,38 @@ Note the honest limits of client-side licensing: the gate deters casual
 sharing, but anyone able to read the page source can bypass it — the private
 key never being in the page is what it guarantees.
 
+### Subscriptions (InstaPay payment gate)
+
+The lock screen sells two subscriptions — **1 Month for $5** and **1 Year for
+$50** (EGP amounts shown alongside; edit them in `src/hy8/payment.js` as the
+rate you charge changes). Picking a plan shows the payment steps: transfer
+the EGP amount to the vendor's InstaPay address with the **Machine ID in the
+transfer note**, then click **"I've paid — confirm my payment"**. The tool
+registers the request with the vendor's license server and polls it every
+few seconds — this is the tool's only online step; everything else stays
+offline.
+
+InstaPay has no public API, so the confirmation is vendor-in-the-loop:
+`server/hy8-license-server.mjs` (zero-dependency Node 18+, orders persisted
+to `server/orders.json`) shows pending requests on `/admin?secret=…`; when
+the matching credit appears in the vendor's banking app, one click on
+**Approve** makes the server sign a license key for the plan's period
+(monthly = 30 days, yearly = 365) and the customer's open tool activates
+itself on the next poll — for the customer it's fully automatic. The signed
+key goes through the normal activation path (signature, machine, expiry),
+so the server is trusted only as a courier, and expiry re-locks the tool
+when the subscription ends. `POST /api/webhook` approves programmatically —
+point a PSP's payment webhook (e.g. Paymob/Kashier) at it later to remove
+the manual approval click.
+
+Vendor setup: copy `server/config.example.json` to `server/config.json`
+(gitignored), set a strong `adminSecret`, deploy anywhere Node runs
+(`node server/hy8-license-server.mjs`), then set `serverUrl` and your
+`instapayAddress` in `src/hy8/payment.js` and rebuild. With no `serverUrl`
+configured the gate falls back to manual key delivery. Note that Egyptian
+PayPal accounts cannot receive payments — InstaPay/local processors are the
+practical option for receiving in Egypt.
+
 ### Try it
 
 1. `npm run build` (or use an already-built `dist/hy8-importer.html`) and
