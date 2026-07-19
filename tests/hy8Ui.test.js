@@ -7,6 +7,7 @@ import { JSDOM } from 'jsdom';
 import { initApp } from '../src/hy8/ui/app.js';
 import { serializeHy8, parseHy8 } from '../src/hy8/hy8File.js';
 import { parseXlsxRows } from '../src/hy8/xlsx.js';
+import { unzip } from '../src/hy8/zip.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const hy8Fixture = readFileSync(join(__dirname, 'fixtures/hy8/Section_1.hy8'), 'utf8');
@@ -198,7 +199,7 @@ test('setCsvRows (the .xlsx path) feeds the same mapping pipeline as CSV text', 
   assert.ok(root.querySelector('#csvFileLabel').textContent.includes('Table1.xlsx'));
 });
 
-test('DOCX report extraction renders the design-flow results and exports CSV', async () => {
+test('DOCX report extraction renders the design-flow results and exports Excel', async () => {
   const { readFileSync } = await import('node:fs');
   const docxBuf = readFileSync(join(__dirname, 'fixtures/hy8/Section_3_report.docx'));
   const hy8Section3 = readFileSync(join(__dirname, 'fixtures/hy8/Section_3.hy8'), 'utf8');
@@ -218,9 +219,13 @@ test('DOCX report extraction renders the design-flow results and exports CSV', a
 
   root.querySelector('#exportReportBtn').dispatchEvent(new window.Event('click'));
   assert.equal(downloads.length, 1);
-  assert.equal(downloads[0].name, 'Section_3_report_results.csv');
-  assert.ok(downloads[0].text.startsWith('Culvert Name,Design flow (m3/s),Headwater elevation (m),HW/D'));
-  assert.ok(downloads[0].text.includes('CU-JAS-06'));
+  assert.equal(downloads[0].name, 'Section_3_report_results.xlsx');
+
+  const bytes = downloads[0].text;
+  const grid = await parseXlsxRows(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  assert.equal(grid[0][0], 'Culvert Name');
+  assert.equal(grid[0][3], 'HW/D');
+  assert.ok(grid.some((r) => r[0] === 'CU-JAS-06'));
 });
 
 test('loading a culvert schedule after the DOCX re-extracts HW/D with the schedule rise', async () => {
@@ -367,4 +372,86 @@ test('loading a creator list previews rows, reports errors, and creates a parsea
   // The created file loads straight back into the import tab for analysis.
   app.setHy8Text(downloads[0].text, 'Section_9.hy8');
   assert.equal(app.state.hy8Doc.crossings.length, 2);
+});
+
+test('the report extraction export button now downloads a two-sheet Excel workbook', async () => {
+  const { root, app, downloads } = makeApp();
+  app.setHy8Text(readFileSync(join(__dirname, 'fixtures/hy8/Section_3.hy8'), 'utf8'), 'Section_3.hy8');
+  await app.setReportDocx(
+    (() => {
+      const b = readFileSync(join(__dirname, 'fixtures/hy8/Section_3_report.docx'));
+      return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
+    })(),
+    'Section_3_report.docx'
+  );
+  assert.equal(root.querySelector('#exportReportBtn').disabled, false);
+
+  root.querySelector('#exportReportBtn').dispatchEvent(new window.Event('click'));
+  assert.equal(downloads.length, 1);
+  assert.equal(downloads[0].name, 'Section_3_report_results.xlsx');
+
+  const files = await unzip(
+    downloads[0].text.buffer.slice(downloads[0].text.byteOffset, downloads[0].text.byteOffset + downloads[0].text.byteLength),
+    '.xlsx'
+  );
+  assert.ok(files.has('xl/worksheets/sheet1.xml'));
+  assert.ok(files.has('xl/worksheets/sheet2.xml'));
+  const sheet2 = new TextDecoder().decode(files.get('xl/worksheets/sheet2.xml'));
+  assert.ok(sheet2.includes('conditionalFormatting')); // cover CF present
+});
+
+test('the checks tab flags a created culvert with high HW/D and exports Excel', () => {
+  const { root, app, downloads } = makeApp();
+  // Create a file whose single culvert will surcharge (tiny box, big flow).
+  app.setCreatorGrid(
+    [
+      ['Name', 'Design Flow (m3/s)', 'Cells', 'Width (m)', 'Rise (m)', 'Length (m)', 'USIL (m)', 'DSIL (m)', 'Slope (m/m)'],
+      ['CU-TIGHT', '30', '1', '1.0', '1.0', '30', '10', '9.9', ''],
+    ],
+    'one.csv'
+  );
+  root.querySelector('#createBtn').dispatchEvent(new window.Event('click'));
+  const created = downloads.pop().text;
+  app.setHy8Text(created, 'created.hy8');
+
+  root.querySelector('#tabBtnChecks').dispatchEvent(new window.Event('click'));
+  assert.equal(root.querySelector('#runChecksBtn').disabled, false);
+  // No report loaded -> the report source radio is disabled, computed is used.
+  assert.equal(root.querySelector('#checkSrcReport').disabled, true);
+
+  root.querySelector('#runChecksBtn').dispatchEvent(new window.Event('click'));
+  const table = root.querySelector('#checksResultTable');
+  assert.ok(table);
+  assert.equal(table.querySelectorAll('tbody tr').length, 1);
+  // The tight box surcharges: HW/D column should be flagged.
+  assert.ok(table.querySelector('td.check-fail'));
+  assert.ok(root.querySelector('#checksStatusMsg').textContent.includes('flagged'));
+
+  root.querySelector('#exportChecksBtn').dispatchEvent(new window.Event('click'));
+  assert.equal(downloads.length, 1);
+  assert.equal(downloads[0].name, 'created_checks.xlsx');
+});
+
+test('editing a threshold re-runs the checks live', () => {
+  const { root, app, downloads } = makeApp();
+  app.setCreatorGrid(
+    [
+      ['Name', 'Design Flow (m3/s)', 'Cells', 'Width (m)', 'Rise (m)', 'Length (m)', 'USIL (m)', 'DSIL (m)', 'Slope (m/m)'],
+      ['CU-OK', '2', '1', '2.5', '2.5', '30', '10', '9.9', ''],
+    ],
+    'one.csv'
+  );
+  root.querySelector('#createBtn').dispatchEvent(new window.Event('click'));
+  app.setHy8Text(downloads.pop().text, 'created.hy8');
+
+  root.querySelector('#tabBtnChecks').dispatchEvent(new window.Event('click'));
+  root.querySelector('#runChecksBtn').dispatchEvent(new window.Event('click'));
+  // Cover is the standard 2 m; with a 1 m minimum it passes.
+  assert.equal(root.querySelector('#checksResultTable td.check-fail'), null);
+
+  // Raise the cover minimum above 2 m -> the cover cell should now fail.
+  const thCover = root.querySelector('#thCover');
+  thCover.value = '3';
+  thCover.dispatchEvent(new window.Event('input'));
+  assert.ok(root.querySelector('#checksResultTable td.check-fail'));
 });

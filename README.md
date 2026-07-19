@@ -96,15 +96,32 @@ list accept CSV or `.xlsx` (first worksheet; legacy `.xls` is not supported).
   velocity — from the per-culvert "Culvert Summary Table" in the report.
   Culverts are matched by name and the design flow is read from the `.hy8`
   file's `DISCHARGERANGE`; the results table renders in SI (reports printed
-  in either unit system are detected and converted) and exports as
-  `<name>_report_results.csv`. Missing tables, missing columns, or a design
-  flow absent from the report's flow rows are flagged per row. HW/D is not
-  taken from the report's printed column (HY-8's SI reports divide a depth
+  in either unit system are detected and converted) and exports as an Excel
+  workbook `<name>_report_results.xlsx` with two sheets: **Hydraulic Results**
+  (design flow, headwater elevation, HW/D, normal / inlet control / outlet
+  control depths, outlet velocity) and **Geometric Data** (number of barrels,
+  cell width and height, cover, slope, upstream and downstream invert
+  elevations, culvert length, skew). Cells that cross the review thresholds
+  are highlighted red with real Excel conditional formatting — HW/D and outlet
+  velocity on the hydraulic sheet, cover on the geometric sheet — using the
+  thresholds set on the Checks tab. (Skew is not stored in the `.hy8` project
+  format, so it is reported as 0°.) Missing tables, missing columns, or a
+  design flow absent from the report's flow rows are flagged per row. HW/D is
+  not taken from the report's printed column (HY-8's SI reports divide a depth
   in meters by the rise in feet there): it is computed as the governing
   headwater depth — max(inlet control depth, outlet control depth) — ÷
   rise, with the rise taken from the loaded culvert schedule (matched by
   culvert name) or from the `.hy8` file's `BARRELDATA` when no schedule is
   loaded.
+- **Result checks**: the "Checks" tab flags culverts whose results cross
+  review thresholds — **cover** (minimum, default 1 m), **HW/D** (maximum,
+  default 1), and **outlet velocity** (maximum, default 4.5 m/s), all
+  editable. HW/D and outlet velocity come from the loaded HY-8 report when one
+  is present, otherwise from the in-browser HDS-5 analysis (selectable);
+  cover is read from the file's roadway crest and invert data (crest − USIL −
+  cell height). Failing values are shown red in the table and exported to
+  `<name>_checks.xlsx` with the same conditional formatting. Editing a
+  threshold re-runs the checks live.
 - **Create a new HY-8 file**: the "Create new HY-8" tab builds a complete
   `.hy8` project from scratch out of a culvert list — no starting HY-8 file
   needed. Click **Download Excel template (.xlsx)** to get a template with

@@ -198,6 +198,15 @@
   #creatorResultTable { min-width: 760px; }
   #creatorProjectName { max-width: 320px; }
 
+  #checksContainer { overflow-x: auto; margin-top: 12px; }
+  #checksResultTable { min-width: 640px; }
+  #checksResultTable td.check-fail, #checksResultTable span.check-fail { color: var(--color-danger); font-weight: 650; }
+  #checksResultTable td.check-fail { background: var(--color-danger-bg); }
+  #checksResultTable td.check-ok, #checksResultTable span.check-ok { color: var(--color-success); }
+  #checksResultTable td.check-na, #checksResultTable span.check-na { color: var(--color-text-tertiary); }
+  .threshold-field { max-width: 160px; }
+  .threshold-field label { white-space: nowrap; }
+
   #analysisContainer { margin-top: 12px; }
   .analysis-block { border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: 8px; }
   .analysis-block summary { padding: 10px 12px; cursor: pointer; font-size: 13.5px; font-weight: 600; }

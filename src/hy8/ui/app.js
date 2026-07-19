@@ -12,7 +12,10 @@ import { applyGeometryImport } from '../applyImport.js';
 import { buildComputedSummary, buildExtractedSummary, buildFullAnalysis } from '../summary.js';
 import { generateSummaryCsv, generateFullAnalysisCsv } from '../summaryExport.js';
 import { parseDocxSummaryTables } from '../docx.js';
-import { extractReportResults, generateReportCsv } from '../reportExtract.js';
+import { extractReportResults } from '../reportExtract.js';
+import { geometryByName } from '../geometry.js';
+import { runChecks, countFailures, DEFAULT_THRESHOLDS } from '../checks.js';
+import { buildReportExcel, buildChecksExcel } from '../excelReports.js';
 import { escapeHtml } from '../../util.js';
 import {
   renderMappingRow,
@@ -23,6 +26,7 @@ import {
   renderReportTable,
   renderFullAnalysis,
   renderCreatorTable,
+  renderChecksTable,
 } from './render.js';
 
 export function initApp(root, { download = defaultDownload } = {}) {
@@ -43,12 +47,16 @@ export function initApp(root, { download = defaultDownload } = {}) {
     creatorCulverts: [],
     creatorErrors: [],
     creatorFileName: null,
+    thresholds: { ...DEFAULT_THRESHOLDS },
+    checkRows: null,
+    checkSource: null,
   };
 
   root.innerHTML = `
     <div class="tabs" role="tablist">
       <button id="tabBtnImport" class="tab is-active" role="tab" aria-selected="true">Import into existing HY-8</button>
       <button id="tabBtnCreate" class="tab" role="tab" aria-selected="false">Create new HY-8</button>
+      <button id="tabBtnChecks" class="tab" role="tab" aria-selected="false">Checks</button>
     </div>
 
     <div id="importTab">
@@ -170,9 +178,13 @@ export function initApp(root, { download = defaultDownload } = {}) {
           HW/D is computed as max(inlet, outlet control depth) ÷ rise (rise from the loaded culvert
           schedule, or the .hy8 file if no schedule is loaded), not taken from the report's HW/D column.</span>
       </div>
-      <button id="exportReportBtn" class="btn" disabled>Export report results as CSV</button>
+      <button id="exportReportBtn" class="btn" disabled>Export report results as Excel (.xlsx)</button>
       <div id="reportContainer"></div>
       <p id="reportStatusMsg" class="status"></p>
+      <p class="hint">The Excel workbook has two sheets — <strong>Hydraulic Results</strong> and
+        <strong>Geometric Data</strong> (barrels, cell width/height, cover, slope, invert elevations,
+        length, skew) — with red conditional formatting where HW/D, outlet velocity, or cover cross
+        the thresholds set in the Checks tab.</p>
     </section>
     </div>
 
@@ -204,6 +216,43 @@ export function initApp(root, { download = defaultDownload } = {}) {
       </div>
       <button id="createBtn" class="btn btn-primary" disabled>Create &amp; download .hy8</button>
       <p id="creatorStatusMsg" class="status"></p>
+    </section>
+    </div>
+
+    <div id="checksTab" style="display:none">
+    <section class="card">
+      <div class="card__header">
+        <h2 class="card__title">Result checks</h2>
+        <span class="card__hint">Flags culverts whose cover, HW/D, or outlet velocity cross the thresholds</span>
+      </div>
+      <p class="hint">Load a .hy8 file in the Import tab first. Cover is a <strong>minimum</strong>
+        (flagged when below); HW/D and outlet velocity are <strong>maxima</strong> (flagged when above).
+        Values come from the HY-8 report (if one is loaded) or the in-browser HDS-5 analysis; cover
+        comes from the file's roadway and invert data.</p>
+      <div class="field-row">
+        <div class="field threshold-field">
+          <label for="thCover">Cover — min (m)</label>
+          <input type="number" id="thCover" value="1" min="0" step="0.1">
+        </div>
+        <div class="field threshold-field">
+          <label for="thHwOverD">HW/D — max</label>
+          <input type="number" id="thHwOverD" value="1" min="0" step="0.1">
+        </div>
+        <div class="field threshold-field">
+          <label for="thVelocity">Outlet velocity — max (m/s)</label>
+          <input type="number" id="thVelocity" value="4.5" min="0" step="0.1">
+        </div>
+      </div>
+      <div class="field-row">
+        <label class="field-checkbox"><input type="radio" name="checkSource" id="checkSrcReport"> Use HY-8 report results</label>
+        <label class="field-checkbox"><input type="radio" name="checkSource" id="checkSrcComputed" checked> Use computed (approx. HDS-5)</label>
+      </div>
+      <div class="field-row">
+        <button id="runChecksBtn" class="btn btn-primary" disabled>Run checks</button>
+        <button id="exportChecksBtn" class="btn" disabled>Export checks as Excel (.xlsx)</button>
+      </div>
+      <div id="checksContainer"></div>
+      <p id="checksStatusMsg" class="status"></p>
     </section>
     </div>
   `;
@@ -243,8 +292,10 @@ export function initApp(root, { download = defaultDownload } = {}) {
     reportStatusMsg: root.querySelector('#reportStatusMsg'),
     tabBtnImport: root.querySelector('#tabBtnImport'),
     tabBtnCreate: root.querySelector('#tabBtnCreate'),
+    tabBtnChecks: root.querySelector('#tabBtnChecks'),
     importTab: root.querySelector('#importTab'),
     createTab: root.querySelector('#createTab'),
+    checksTab: root.querySelector('#checksTab'),
     templateBtn: root.querySelector('#templateBtn'),
     creatorInput: root.querySelector('#creatorInput'),
     creatorFileLabel: root.querySelector('#creatorFileLabel'),
@@ -253,19 +304,34 @@ export function initApp(root, { download = defaultDownload } = {}) {
     creatorProjectName: root.querySelector('#creatorProjectName'),
     createBtn: root.querySelector('#createBtn'),
     creatorStatusMsg: root.querySelector('#creatorStatusMsg'),
+    thCover: root.querySelector('#thCover'),
+    thHwOverD: root.querySelector('#thHwOverD'),
+    thVelocity: root.querySelector('#thVelocity'),
+    checkSrcReport: root.querySelector('#checkSrcReport'),
+    checkSrcComputed: root.querySelector('#checkSrcComputed'),
+    runChecksBtn: root.querySelector('#runChecksBtn'),
+    exportChecksBtn: root.querySelector('#exportChecksBtn'),
+    checksContainer: root.querySelector('#checksContainer'),
+    checksStatusMsg: root.querySelector('#checksStatusMsg'),
   };
 
+  const TABS = {
+    import: { btn: els.tabBtnImport, panel: els.importTab },
+    create: { btn: els.tabBtnCreate, panel: els.createTab },
+    checks: { btn: els.tabBtnChecks, panel: els.checksTab },
+  };
   function selectTab(which) {
-    const showCreate = which === 'create';
-    els.importTab.style.display = showCreate ? 'none' : '';
-    els.createTab.style.display = showCreate ? '' : 'none';
-    els.tabBtnImport.classList.toggle('is-active', !showCreate);
-    els.tabBtnCreate.classList.toggle('is-active', showCreate);
-    els.tabBtnImport.setAttribute('aria-selected', String(!showCreate));
-    els.tabBtnCreate.setAttribute('aria-selected', String(showCreate));
+    for (const [key, { btn, panel }] of Object.entries(TABS)) {
+      const active = key === which;
+      panel.style.display = active ? '' : 'none';
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-selected', String(active));
+    }
+    if (which === 'checks') refreshChecksControls();
   }
   els.tabBtnImport.addEventListener('click', () => selectTab('import'));
   els.tabBtnCreate.addEventListener('click', () => selectTab('create'));
+  els.tabBtnChecks.addEventListener('click', () => selectTab('checks'));
 
   function recomputeMapping() {
     state.mapResult =
@@ -335,6 +401,7 @@ export function initApp(root, { download = defaultDownload } = {}) {
     els.exportAnalysisBtn.disabled = !state.fullAnalysis;
     els.docxInput.disabled = !state.hy8Doc;
     els.exportReportBtn.disabled = !state.reportRows;
+    refreshChecksControls();
   }
 
   function renderSummary() {
@@ -366,6 +433,11 @@ export function initApp(root, { download = defaultDownload } = {}) {
     state.reportFileName = null;
     els.reportContainer.innerHTML = '';
     els.reportStatusMsg.textContent = '';
+    // Checks belonged to the old file too.
+    state.checkRows = null;
+    state.checkSource = null;
+    els.checksContainer.innerHTML = '';
+    els.checksStatusMsg.textContent = '';
     recomputeMapping();
   }
 
@@ -586,6 +658,13 @@ export function initApp(root, { download = defaultDownload } = {}) {
       `${state.reportFileName}: ${extracted} culvert(s) extracted at their design flow` +
       (flagged ? `, ${flagged} flagged (see notes)` : '') + '.';
     els.reportStatusMsg.className = 'status status--success';
+    // A report is now available — make it the default source for the checks
+    // tab and refresh a stale check run against the fresh results.
+    if (els.checkSrcReport) {
+      els.checkSrcReport.checked = true;
+      refreshChecksControls();
+      if (state.checkRows) runChecksInTab();
+    }
   }
 
   async function setReportDocx(arrayBuffer, fileName) {
@@ -616,10 +695,11 @@ export function initApp(root, { download = defaultDownload } = {}) {
 
   els.exportReportBtn.addEventListener('click', () => {
     try {
-      const csv = generateReportCsv(state.reportRows);
-      const name = downloadName(state.hy8FileName, '_report_results.csv');
-      download(name, csv, 'text/csv');
-      els.reportStatusMsg.textContent = `Downloaded ${name}.`;
+      readThresholds();
+      const bytes = buildReportExcel(state.reportRows, geometryByName(state.hy8Doc), state.thresholds);
+      const name = downloadName(state.hy8FileName, '_report_results.xlsx');
+      download(name, bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      els.reportStatusMsg.textContent = `Downloaded ${name} — Hydraulic Results + Geometric Data sheets.`;
       els.reportStatusMsg.className = 'status status--success';
     } catch (err) {
       els.reportStatusMsg.textContent = `Export failed: ${err.message}`;
@@ -691,9 +771,105 @@ export function initApp(root, { download = defaultDownload } = {}) {
     }
   });
 
+  // -- Checks tab --
+
+  function readThresholds() {
+    const num = (el, def) => {
+      const v = Number(el.value);
+      return Number.isFinite(v) && v >= 0 ? v : def;
+    };
+    state.thresholds = {
+      coverMinM: num(els.thCover, DEFAULT_THRESHOLDS.coverMinM),
+      hwOverDMax: num(els.thHwOverD, DEFAULT_THRESHOLDS.hwOverDMax),
+      outletVelocityMaxMs: num(els.thVelocity, DEFAULT_THRESHOLDS.outletVelocityMaxMs),
+    };
+    return state.thresholds;
+  }
+
+  function refreshChecksControls() {
+    const hasReport = !!state.reportRows;
+    els.checkSrcReport.disabled = !hasReport;
+    if (!hasReport && els.checkSrcReport.checked) els.checkSrcComputed.checked = true;
+    els.runChecksBtn.disabled = !state.hy8Doc;
+    els.exportChecksBtn.disabled = !state.checkRows;
+  }
+
+  // name(lowercased) -> { hwOverD, outletVelocityMs } from the chosen source.
+  function chosenHydraulic() {
+    const map = new Map();
+    if (els.checkSrcReport.checked && state.reportRows) {
+      for (const r of state.reportRows) if (!r.error) map.set((r.name || '').trim().toLowerCase(), r);
+      return { map, label: 'HY-8 report results' };
+    }
+    for (const r of buildComputedSummary(state.hy8Doc)) {
+      if (!r.error) map.set((r.name || '').trim().toLowerCase(), r);
+    }
+    return { map, label: 'computed (approx. HDS-5)' };
+  }
+
+  function runChecksInTab() {
+    if (!state.hy8Doc) {
+      els.checksStatusMsg.textContent = 'Load a .hy8 file in the Import tab first.';
+      els.checksStatusMsg.className = 'status status--error';
+      return;
+    }
+    readThresholds();
+    const { map, label } = chosenHydraulic();
+    state.checkRows = runChecks(geometryByName(state.hy8Doc), map, state.thresholds);
+    state.checkSource = label;
+    els.checksContainer.innerHTML = renderChecksTable(state.checkRows, state.thresholds);
+    els.exportChecksBtn.disabled = false;
+    const failed = countFailures(state.checkRows);
+    els.checksStatusMsg.textContent = `${state.checkRows.length} culvert(s) checked against ${label} — ${failed} flagged.`;
+    els.checksStatusMsg.className = failed ? 'status status--error' : 'status status--success';
+  }
+
+  els.runChecksBtn.addEventListener('click', () => {
+    try {
+      runChecksInTab();
+    } catch (err) {
+      els.checksStatusMsg.textContent = `Checks failed: ${err.message}`;
+      els.checksStatusMsg.className = 'status status--error';
+    }
+  });
+
+  for (const el of [els.thCover, els.thHwOverD, els.thVelocity]) {
+    el.addEventListener('input', () => {
+      readThresholds();
+      if (state.checkRows) runChecksInTab(); // keep the flags and header live
+    });
+  }
+  els.checkSrcReport.addEventListener('change', () => state.checkRows && runChecksInTab());
+  els.checkSrcComputed.addEventListener('change', () => state.checkRows && runChecksInTab());
+
+  els.exportChecksBtn.addEventListener('click', () => {
+    try {
+      const bytes = buildChecksExcel(state.checkRows, state.thresholds);
+      const name = downloadName(state.hy8FileName, '_checks.xlsx');
+      download(name, bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      els.checksStatusMsg.textContent = `Downloaded ${name}.`;
+      els.checksStatusMsg.className = 'status status--success';
+    } catch (err) {
+      els.checksStatusMsg.textContent = `Export failed: ${err.message}`;
+      els.checksStatusMsg.className = 'status status--error';
+    }
+  });
+
   render();
 
-  return { state, setCsvText, setCsvRows, setHy8Text, setReportDocx, setCreatorGrid, runCreate, selectTab, recomputeMapping, runImport };
+  return {
+    state,
+    setCsvText,
+    setCsvRows,
+    setHy8Text,
+    setReportDocx,
+    setCreatorGrid,
+    runCreate,
+    selectTab,
+    runChecksInTab,
+    recomputeMapping,
+    runImport,
+  };
 }
 
 function downloadName(originalName, suffix) {

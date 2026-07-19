@@ -93,6 +93,35 @@ export function renderCreatorTable(culverts) {
   </table>`;
 }
 
+// One value + pass/fail cell for the checks table. Failing cells get the
+// .check-fail class (red); values that couldn't be judged show a dash.
+function checkCell(judgement, digits = 3) {
+  if (judgement.pass === null) return '<td class="check-na">—</td>';
+  const cls = judgement.pass ? 'check-ok' : 'check-fail';
+  return `<td class="${cls}">${numCell(judgement.value, digits)}</td>`;
+}
+
+export function renderChecksTable(rows, thresholds) {
+  const body = rows
+    .map(
+      (r) =>
+        `<tr><td>${escapeHtml(r.name)}</td>${checkCell(r.cover)}${checkCell(r.hwOverD)}${checkCell(r.velocity)}<td>${
+          r.anyFail ? '<span class="check-fail">FLAGGED</span>' : r.anyMissing ? '<span class="check-na">incomplete</span>' : '<span class="check-ok">OK</span>'
+        }</td></tr>`
+    )
+    .join('');
+  return `<table class="diff-table" id="checksResultTable">
+    <thead><tr>
+      <th>Culvert</th>
+      <th>Cover (m) — min ${thresholds.coverMinM}</th>
+      <th>HW/D — max ${thresholds.hwOverDMax}</th>
+      <th>Outlet velocity (m/s) — max ${thresholds.outletVelocityMaxMs}</th>
+      <th>Result</th>
+    </tr></thead>
+    <tbody>${body}</tbody>
+  </table>`;
+}
+
 export function renderDiffSection(culvertLabel, diffs) {
   const rows = diffs
     .map(

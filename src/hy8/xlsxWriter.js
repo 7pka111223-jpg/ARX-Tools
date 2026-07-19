@@ -16,7 +16,28 @@ function columnLetter(index) {
   return s;
 }
 
-function sheetXml(rows) {
+// Conditional-formatting XML for a sheet. Each rule flags cells in one column
+// whose value is greater/less than a constant threshold, using the single red
+// differential format (dxfId 0) defined in styles.xml.
+function conditionalFormattingXml(rules, rowCount) {
+  if (!rules || !rules.length || rowCount < 2) return '';
+  return rules
+    .map((rule, i) => {
+      const colLetter = columnLetter(rule.col);
+      const first = rule.firstDataRow || 2;
+      const last = rule.lastDataRow || rowCount;
+      if (last < first) return '';
+      const sqref = `${colLetter}${first}:${colLetter}${last}`;
+      return (
+        `<conditionalFormatting sqref="${sqref}">` +
+        `<cfRule type="cellIs" dxfId="0" priority="${i + 1}" operator="${rule.operator}">` +
+        `<formula>${rule.formula}</formula></cfRule></conditionalFormatting>`
+      );
+    })
+    .join('');
+}
+
+function sheetXml(rows, rules) {
   const body = rows
     .map((row, r) => {
       const cells = row
@@ -32,21 +53,48 @@ function sheetXml(rows) {
       return `<row r="${r + 1}">${cells}</row>`;
     })
     .join('');
+  // conditionalFormatting must follow sheetData in the worksheet schema.
   return (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
-    `<sheetData>${body}</sheetData></worksheet>`
+    `<sheetData>${body}</sheetData>` +
+    conditionalFormattingXml(rules, rows.length) +
+    '</worksheet>'
   );
 }
 
-const CONTENT_TYPES =
+// A single differential format (dxfId 0): light-red fill + dark-red text,
+// Excel's standard "bad" highlight, referenced by every conditional rule.
+const STYLES_XML =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-  '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
-  '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
-  '<Default Extension="xml" ContentType="application/xml"/>' +
-  '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
-  '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
-  '</Types>';
+  '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+  '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>' +
+  '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>' +
+  '<borders count="1"><border/></borders>' +
+  '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+  '<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>' +
+  '<dxfs count="1"><dxf><font><color rgb="FF9C0006"/></font>' +
+  '<fill><patternFill><bgColor rgb="FFFFC7CE"/></patternFill></fill></dxf></dxfs>' +
+  '</styleSheet>';
+
+function contentTypesXml(sheetCount) {
+  const overrides = [];
+  for (let i = 1; i <= sheetCount; i++) {
+    overrides.push(
+      `<Override PartName="/xl/worksheets/sheet${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`
+    );
+  }
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+    overrides.join('') +
+    '</Types>'
+  );
+}
 
 const ROOT_RELS =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -54,18 +102,34 @@ const ROOT_RELS =
   '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
   '</Relationships>';
 
-const WORKBOOK_RELS =
-  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-  '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-  '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
-  '</Relationships>';
+// Sheets take rId1..rIdN; styles takes rId(N+1).
+function workbookRelsXml(sheetCount) {
+  const rels = [];
+  for (let i = 1; i <= sheetCount; i++) {
+    rels.push(
+      `<Relationship Id="rId${i}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i}.xml"/>`
+    );
+  }
+  rels.push(
+    `<Relationship Id="rId${sheetCount + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`
+  );
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    rels.join('') +
+    '</Relationships>'
+  );
+}
 
-function workbookXml(sheetName) {
+function workbookXml(sheetNames) {
+  const sheets = sheetNames
+    .map((name, i) => `<sheet name="${escapeXml(name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`)
+    .join('');
   return (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
     'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
-    `<sheets><sheet name="${escapeXml(sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>`
+    `<sheets>${sheets}</sheets></workbook>`
   );
 }
 
@@ -138,15 +202,27 @@ function zipStored(entries) {
   return out;
 }
 
-// rows: (string | number | null)[][] — one worksheet, inline strings only.
-export function buildXlsx(rows, sheetName = 'Sheet1') {
-  return zipStored([
-    ['[Content_Types].xml', CONTENT_TYPES],
+// sheets: [{ name, rows, rules? }] — one or more worksheets. Each rows is a
+// (string | number | null)[][] grid (inline strings). rules is an optional
+// array of conditional-formatting rules { col, operator, formula,
+// firstDataRow?, lastDataRow? } that highlight out-of-threshold cells red.
+export function buildWorkbook(sheets) {
+  const entries = [
+    ['[Content_Types].xml', contentTypesXml(sheets.length)],
     ['_rels/.rels', ROOT_RELS],
-    ['xl/workbook.xml', workbookXml(sheetName)],
-    ['xl/_rels/workbook.xml.rels', WORKBOOK_RELS],
-    ['xl/worksheets/sheet1.xml', sheetXml(rows)],
-  ]);
+    ['xl/workbook.xml', workbookXml(sheets.map((s) => s.name))],
+    ['xl/_rels/workbook.xml.rels', workbookRelsXml(sheets.length)],
+    ['xl/styles.xml', STYLES_XML],
+  ];
+  sheets.forEach((sheet, i) => {
+    entries.push([`xl/worksheets/sheet${i + 1}.xml`, sheetXml(sheet.rows, sheet.rules)]);
+  });
+  return zipStored(entries);
+}
+
+// rows: (string | number | null)[][] — single worksheet convenience wrapper.
+export function buildXlsx(rows, sheetName = 'Sheet1') {
+  return buildWorkbook([{ name: sheetName, rows }]);
 }
 
 // The downloadable culvert-list template for the "Create new HY-8" tab.
